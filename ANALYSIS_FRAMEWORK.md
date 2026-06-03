@@ -335,72 +335,68 @@ Momentum: +16.2pp → +27.7pp = +11.5pp WIDENING
 Status: 🚀 Exceptionally strong and accelerating
 ```
 
-### Relevance (Cross-cutting Filter — NOT part of the Signal definition)
+## Signal Strength (Intrinsic) vs Relevance (Extrinsic)
 
-Strength is **not a tier and not what makes something a Signal**. It's a filter applied *across* the tiers to decide which signals are worth composing into Findings, and which Findings are worth surfacing as Insights. A signal is still a signal whether it's strong or noise — strength just gates attention. It depends on:
+These are **two different questions**, and conflating them is a mistake:
 
-#### Dimension 1: Materiality (Region Size/Rank)
-```
-Rank >= 90 (top 10%)     → Maximum weight (4)
-Rank 75-90 (top 25%)     → High weight (3)
-Rank 50-75 (top 50%)     → Medium weight (2)
-Rank < 50                → Low weight (1)
-```
+- **Signal strength** — *how loud and how clean is this trajectory?* A property of the signal itself. A small region can throw a very strong signal that simply doesn't matter for business.
+- **Relevance** — *does this loud signal land somewhere worth acting on?* Region size, € at stake, durability. Applied downstream, at the Finding/Insight gate.
 
-#### Dimension 2: Metric Magnitude
+Keep them apart. Strength is computed from the trajectory; relevance multiplies that by business context.
 
-For **Growth metrics** (growth_py_sales, growth_vs_fcst_eur):
-```
-|Gap| >= 15pp            → Exceptional (4)
-10pp <= |Gap| < 15pp     → Strong (3)
-5pp <= |Gap| < 10pp      → Moderate (2)
-|Gap| < 5pp              → Weak (1)
-```
+### Signal Strength — three measures, never collapsed to one
 
-For **Position metrics** (mshare_deviation, changes):
-```
-|Gap| >= 2.0pp           → Exceptional (4)
-1.0pp <= |Gap| < 2.0pp   → Strong (3)
-0.5pp <= |Gap| < 1.0pp   → Moderate (2)
-|Gap| < 0.5pp            → Weak (1)
-```
+Computed over the **consecutive step-deltas** of the metric across the signal's window (values oldest → now). A single scalar cannot hold a trajectory, so we keep three measures (definitions in `knowledge_definitions.json → signal_strength`; computed by `knowledge.py → signal_strength()`):
 
-#### Dimension 3: Persistence (Trend Consistency)
-```
-Consistent 3+ periods    → Strong (3)
-Consistent 2 periods     → Moderate (2)
-Single period anomaly    → Weak (1)
-```
+| Measure | Formula | Question it answers |
+|---------|---------|---------------------|
+| **Magnitude** `V` | `Σ \|step δ\|` — total variation / path length | *How loud?* (≥ 0, in pp) |
+| **Net** `D` | `value_now − value_start` (= signed `Σδ`, it telescopes) | *Which way, and how far net?* sign(D) = good/bad |
+| **Coherence** `ρ` | `D / V` ∈ [−1, +1] | *Trend or oscillation?* |
 
-#### Dimension 4: Time Horizon
-```
-MAT (12-month)           → Strongest (4)
-YTD (year-to-date)       → Strong (3)
-RollQ (3-month)          → Moderate (2)
-Month (1-month)          → Weakest (1)
-```
+`ρ` is the signed **Kaufman Efficiency Ratio** (net displacement ÷ distance travelled). It is exactly what resolves the two classic failure modes:
 
-#### Signal Strength Formula
+- **Unsigned `V` alone** is "neither good nor bad" — it has no direction. → fixed by `sign(D)`.
+- **Signed `D` alone** hides oscillation: `−10` then `+10` nets to `0` and *looks* like no signal. → `V` catches it: `V = 20` (very loud), `D = 0`, `ρ = 0`. Not strength-zero — a loud **oscillation**.
+
+Convenience scalar (for sorting, never a replacement): **`signed_strength = D · |ρ|`** — net discounted by incoherence; equals `D` for a perfectly clean trend, → 0 for a pure oscillation.
+
+#### Shapes (V × ρ)
+
+| Shape | Condition | Meaning | Feeds |
+|-------|-----------|---------|-------|
+| **quiet** | `V < moderate` | nothing to report | — |
+| **trend** | `V ≥ loud` and `\|ρ\| ≥ 0.6` | clean directional move | Turnaround (ρ>0) / Deteriorating (ρ<0) |
+| **unstable** | `V ≥ loud` and `\|ρ\| < 0.3` | loud but going nowhere net | **Unstable / Erratic** |
+| **mixed** | otherwise | some movement, partial direction | — |
+
+(`loud`/`moderate` pp thresholds and the coherence cut-offs are tunable knobs in `signal_strength.loudness_bands_pp` / `coherence_bands`.)
+
+#### Worked examples — real `mshare_deviation` on MAT, Oncleris (franchise Oncology), as-of 2026-05
 
 ```
-Signal Strength = Materiality × Magnitude × Persistence × TimeHorizon
-
-STRONG Signal Example:
-- Region rank 92 (top 8%, materiality = 4)
-- Gap = -4.2pp vs FCST (magnitude = 3)
-- Worsening 3 consecutive quarters (persistence = 3)
-- On MAT level (time horizon = 4)
-→ Strength = 4 × 3 × 3 × 4 = 144 → CRITICAL
-
-WEAK Signal Example:
-- Region rank 25 (small, materiality = 1)
-- Sales drop -40% (magnitude = 4)
-- RollQ level (time horizon = 2)
-- Single quarter (persistence = 1)
-→ Strength = 1 × 4 × 1 × 2 = 8 → NOISE
+region                     series (m3→now)        V     D     ρ    direction      shape
+ZH Zürich 8002/38/41/45  [-5.60,-4.92,-4.71,-4.36] 1.24 +1.24 +1.00 improving      trend     ← clean recovery
+ZH Zürich 8006/44        [-5.23,-5.41,-4.79,-4.55] 1.04 +0.68 +0.65 improving      trend     ← dipped then recovered
+BE Bern 3018/19/20/27    [-4.39,-4.45,-5.11,-5.39] 1.00 -1.00 -1.00 deteriorating  trend     ← clean decline
+(synthetic)              [ 0.00,+10.0, 0.00]       20.0  0.00  0.00 flat           unstable  ← the −10+10 case
 ```
 
-**Key Insight**: A -4% decline in a big region over 3 quarters is MUCH stronger than a -40% drop in a tiny region in a single month.
+The top region: below national average (−4.36pp) but the gap is **closing cleanly** — `V = D = 1.24`, `ρ = +1.0`. The synthetic oscillation is loud (`V = 20`) yet directionless (`ρ = 0`) → classified **unstable**, not ignored.
+
+### Relevance — does the loud signal matter?
+
+`relevance = materiality × loudness × horizon` (`knowledge.py → relevance_score()`). Coherence does **not** enter relevance — it selects *which archetype*, not *how much it matters*.
+
+| Factor | Levels | Source |
+|--------|--------|--------|
+| **Materiality** | rank ≥90 → 4 · ≥75 → 3 · ≥50 → 2 · <50 → 1 | `rank_sales_eur` |
+| **Loudness** | `V` very_loud → 4 · loud → 3 · moderate → 2 · quiet → 1 | magnitude `V` |
+| **Horizon** | MAT 4 · YTD 3 · RollQ 2 · Month 1 | period_type |
+
+Band: critical ≥48 · high ≥24 · moderate ≥8 · low <8. The top Oncleris region scores materiality 4 × loudness 3 × horizon 4 = **48 → critical** — a loud, clean signal *and* in the most material region, so it earns attention.
+
+**Key insight (unchanged, now precise):** a clean −4pp slide in a top-10% region (loud `V`, `ρ ≈ −1`, materiality 4) outranks a −40% one-month blip in a tiny region (relevance kills it on materiality), and a `−10/+10` swing is no longer invisible — it surfaces as *unstable*, not *nothing*.
 
 ### Signal Interpretation Lookup Tables
 
@@ -551,7 +547,7 @@ Do you need to capture nuance and business context?
   NO  → Use IF/THEN Rules or Statistical Methods
 ```
 
-### Seven Finding Types
+### Eight Finding Types
 
 #### 1. Stars - High Performers with Positive Momentum
 
@@ -634,6 +630,18 @@ Do you need to capture nuance and business context?
 **Narrative**: No alarm bells but slowly losing market edge to competitors
 
 **Action**: Proactive competitive response needed to reverse trend
+
+---
+
+#### 8. Unstable / Erratic - Loud but Going Nowhere
+
+**Pattern**: High signal magnitude `V` (loud) BUT coherence `\|ρ\| < 0.3` (near-zero net) — the trajectory swings hard and ends roughly where it began
+
+**Example**: mshare_deviation steps of −10pp then +10pp → `V = 20`, `D = 0`, `ρ = 0`
+
+**Narrative**: Volatility *is* the finding. There is no trend to read; the position is oscillating, not moving.
+
+**Action**: Investigate data quality, demand spikiness, or stocking/ordering noise before treating any single point as a trend. This is the archetype that the old "sum of deltas = 0" definition would have silently dropped.
 
 ---
 
@@ -872,9 +880,9 @@ Finding (context-free fact, immutable)
 
 Metric (a number) → Comparative Metric (vs a reference) → Signal (watched over time) → Finding (composed with other facts) → Insight (who & why it matters). Don't collapse tiers: a growth % is *not* a signal until you watch it move; a signal is *not* a finding until you combine it with something.
 
-### 2. Relevance Is a Filter, Not a Tier
+### 2. Signal Strength (Intrinsic) Is Not Relevance (Extrinsic)
 
-Strength = Materiality × Magnitude × Persistence × Horizon gates *which* signals and findings deserve attention. A −4% slide in a top-10% region over 3 quarters beats a −40% blip in a tiny region for one month. Materiality + Persistence >> Magnitude.
+Strength is a property of the trajectory — magnitude `V` (loudness), net `D` (direction), coherence `ρ = D/V` (trend vs oscillation), kept as three measures so `−10/+10` reads as *unstable* (`V=20, ρ=0`), not zero. Relevance is the separate filter — `Materiality × Loudness × Horizon` — deciding whether a loud signal lands somewhere worth acting on. A clean −4pp slide in a top-10% region beats a −40% blip in a tiny one.
 
 ### 3. Context Decides Framing AND Whether It Surfaces
 

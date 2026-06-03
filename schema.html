@@ -903,7 +903,7 @@ body.dark-theme .metric-card p { color: #999; }
           <h3>🧩 Tier 4 · Finding</h3>
           <p>Open-ended <strong>composition of any lower facts</strong> — metrics, comparative metrics, and (usually several) signals. Rarely one fact; in theory it could be.</p>
           <p style="margin-top:6px"><em>"Sales Growth recovering (−40→−30→−10) <strong>AND</strong> competition vanishing <strong>AND</strong> now meeting forecast."</em></p>
-          <p>Compose however you like — or not: IF/THEN rules, clustering, classification, LLM, or just a bundle of signals. Archetypes: <strong>Star · Turnaround · Slowing Giant · Deteriorating · Riding Wave · Weak Foundation · Dangerous Stability</strong>.</p>
+          <p>Compose however you like — or not: IF/THEN rules, clustering, classification, LLM, or just a bundle of signals. Archetypes: <strong>Star · Turnaround · Slowing Giant · Deteriorating · Riding Wave · Weak Foundation · Dangerous Stability · Unstable</strong>.</p>
         </div>
 
         <div class="framework-block">
@@ -918,16 +918,26 @@ body.dark-theme .metric-card p { color: #999; }
         </div>
 
         <div class="framework-block">
-          <h3>🔍 Cross-cutting · Relevance</h3>
-          <p>A filter, not a tier. Decides which signals are worth composing and which findings are worth surfacing.</p>
-          <p><strong>Strength = Materiality × Magnitude × Persistence × Horizon</strong></p>
+          <h3>📏 Signal Strength (intrinsic)</h3>
+          <p>How <em>loud</em> and how <em>clean</em> the trajectory is — a property of the signal, not the business. Three measures over the step-deltas, never one scalar:</p>
           <ul>
-            <li>Materiality + Persistence &gt;&gt; Magnitude</li>
-            <li>A −4% slide in a top-10% region beats a −40% blip in a tiny one</li>
+            <li><strong>Magnitude</strong> V = Σ|δ| — loudness (≥0)</li>
+            <li><strong>Net</strong> D = now − start — direction (good/bad)</li>
+            <li><strong>Coherence</strong> ρ = D/V ∈ [−1,1] — trend vs oscillation</li>
           </ul>
-          <p style="margin-top:8px"><code>python3 compute_metrics.py</code><br>
-          <code>python3 generate_report.py</code><br>
-          See <code>ANALYSIS_FRAMEWORK.md</code></p>
+          <p>Unsigned V is "neither good nor bad"; signed D hides <code>−10+10=0</code>. Keep both: that swing = <strong>V=20, ρ=0 → Unstable</strong>, not strength-zero.</p>
+        </div>
+
+        <div class="framework-block">
+          <h3>🔍 Cross-cutting · Relevance</h3>
+          <p>A filter, not a tier — and <em>separate from strength</em>. A loud signal in a tiny region still doesn't matter.</p>
+          <p><strong>Relevance = Materiality × Loudness × Horizon</strong></p>
+          <ul>
+            <li>Coherence picks the <em>archetype</em>, not the relevance</li>
+            <li>A clean −4pp slide in a top-10% region beats a −40% blip in a tiny one</li>
+          </ul>
+          <p style="margin-top:8px"><code>python3 compute_metrics.py</code> · <code>generate_report.py</code><br>
+          <code>python3 knowledge.py</code> · see <code>ANALYSIS_FRAMEWORK.md</code></p>
         </div>
 
         <div class="framework-block">

@@ -112,8 +112,9 @@ User-Facing Reports
 ```
 
 Tiers 1–2 are stored columns in `region_metrics` (single source of truth);
-Tiers 3–5 are generated on demand. **Relevance** (Materiality × Magnitude ×
-Persistence × Horizon) is a cross-cutting filter, not a tier.
+Tiers 3–5 are generated on demand. **Signal strength** (loud + clean: magnitude ·
+net · coherence) is intrinsic to a signal; **relevance** (Materiality × Loudness ×
+Horizon) is the separate cross-cutting filter — neither is a tier.
 
 ---
 
@@ -123,16 +124,11 @@ Persistence × Horizon) is a cross-cutting filter, not a tier.
 
 A growth % is *not* a signal until you watch it move over time; a signal is *not* a finding until you combine it with other facts. Don't collapse the tiers.
 
-### 2. Relevance Is a Filter, Not a Tier
+### 2. Signal Strength ≠ Relevance
 
-```
-Strength = Materiality × Magnitude × Persistence × Horizon
+**Strength is intrinsic** to the signal — three measures over its step-deltas: magnitude `V` (loudness), net `D` (direction), coherence `ρ = D/V` (trend vs oscillation). Never one scalar: `−10 +10` → `V=20, D=0, ρ=0` = *unstable*, not zero.
 
-STRONG: -4% decline in big region (rank 92) over 3 quarters = 4×3×3×4 = 144
-WEAK:   -40% drop in tiny region (rank 25) in 1 month       = 1×4×1×2 = 8
-```
-
-It gates *which* signals and findings deserve attention. **Materiality + Persistence >> absolute magnitude.**
+**Relevance is the separate filter** — does that loud signal matter? `Relevance = Materiality × Loudness × Horizon`. A clean −4pp slide in a top-10% region (relevance critical) beats a −40% blip in a tiny one (relevance kills it on materiality).
 
 ### 3. Findings Are Structured Facts, Composed However You Like
 
@@ -193,14 +189,27 @@ WHERE brand_name=:brand AND period_type=:period AND region_name=:region
 WINDOW w AS (ORDER BY year_month);
 ```
 
-### Relevance (cross-cutting filter, not the Signal definition)
+### Signal strength (intrinsic) — three measures, never one scalar
 
-| Dimension | Levels | Impact |
-|-----------|--------|--------|
-| **Materiality** (rank) | 90+ (4) → 50-75 (2) → <50 (1) | Who cares? |
-| **Magnitude** | ±15pp+ (4) → ±10-15pp (3) → ±5-10pp (2) → <5pp (1) | How big? |
-| **Persistence** | 3+ periods (3) → 2 periods (2) → 1 period (1) | How real? |
-| **Horizon** | MAT (4) → YTD (3) → RollQ (2) → Month (1) | How durable? |
+Computed over the consecutive **step-deltas** of the trajectory (`knowledge.py → signal_strength()`):
+
+| Measure | Formula | Question |
+|---------|---------|----------|
+| **Magnitude** `V` | `Σ \|step δ\|` (total variation) | how *loud*? (≥0) |
+| **Net** `D` | `now − start` (signed Σδ) | which *way*, how far net? |
+| **Coherence** `ρ` | `D / V` ∈ [−1,1] | *trend* (\|ρ\|→1) or *oscillation* (ρ→0)? |
+
+Why all three: unsigned `V` alone is "neither good nor bad"; signed `D` alone hides oscillation (`−10 +10 = 0`). Keeping both + the ratio `ρ` (signed Kaufman Efficiency Ratio) separates loudness, direction, and trend-vs-noise. `−10/+10` → `V=20, D=0, ρ=0` = **unstable**, not strength-zero. Convenience scalar: `signed_strength = D·|ρ|`.
+
+### Relevance (extrinsic filter — does the loud signal matter?)
+
+Separate from strength: `relevance = materiality × loudness × horizon` (`relevance_score()`). Coherence does *not* enter — it picks the archetype, not the importance.
+
+| Factor | Levels | Source |
+|--------|--------|--------|
+| **Materiality** | rank ≥90→4 · ≥75→3 · ≥50→2 · <50→1 | `rank_sales_eur` |
+| **Loudness** | `V` very_loud→4 · loud→3 · moderate→2 · quiet→1 | magnitude `V` |
+| **Horizon** | MAT 4 · YTD 3 · RollQ 2 · Month 1 | period_type |
 
 ---
 
@@ -226,6 +235,7 @@ Open-ended composition of any lower facts — usually several signals. Compose w
 | **Riding Wave** | Growth ↑↑ BUT Pos stable | +24% growth, +14pp vs FCST, no MS gain | Commodity/market-driven |
 | **Weak Foundation** | Growth ↑ BUT Pos not improving | +14.6% growth, -3.2pp below peers | Secondary market |
 | **Dangerous Stability** | Growth → BUT Pos ↓ | +7.8% steady, -0.7pp to -1.5pp | Competitive response needed |
+| **Unstable / Erratic** | Loud `V` BUT `\|ρ\|`→0 | −10pp then +10pp: V=20, net=0 | Check data/volatility, don't read a trend |
 
 ---
 
@@ -333,7 +343,7 @@ System:
 ## ✨ Key Principles
 
 1. **Each tier adds exactly one thing** (don't collapse metric/comparison/signal/finding)
-2. **Relevance is a filter, not a tier** (Materiality + Persistence >> Magnitude)
+2. **Strength (loud + clean) ≠ relevance (does it matter)** — strength is magnitude·net·coherence; relevance is Materiality × Loudness × Horizon
 3. **Findings ≠ LLM-only** (rules, stats, ML, or just signals all work)
 4. **One source of truth** (Tiers 1–2 stored; signals/findings/insights on-demand)
 5. **Context decides framing and whether it surfaces** (same Finding → different insight, or silence)

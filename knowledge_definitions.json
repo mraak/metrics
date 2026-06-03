@@ -23,6 +23,17 @@
       "direction": "higher_is_better",
       "interpretation": "Is our relative market-share position widening or closing over the last quarter, on a 12-month base? Positive delta = gaining relative ground; negative = slipping. The user's Option-1 example: mshare_deviation on MAT Now / -1M / -2M with a 3-month delta."
     },
+    "mshare_dev_mat_step_1m_3m": {
+      "metric": "mshare_deviation",
+      "period_type": "MAT",
+      "lags": [0, 1, 2, 3],
+      "readout": "delta",
+      "delta_lags": [1, 3],
+      "direction": "higher_is_better",
+      "strength_kind": "position",
+      "materiality_from": "rank_sales_eur",
+      "interpretation": "Short- and medium-term trajectory of relative market-share position on a 12-month base: is the gap to national average closing or widening at -1M and -3M? Headline readouts are delta_1m (recent nudge) and delta_3m (quarter net). lags 1-3 give the full monthly step series so signal_strength can compute magnitude (total variation), net, and coherence. Feeds Turnaround / Deteriorating / Dangerous-Stability / Unstable recipes."
+    },
     "mshare_dev_rollq_step3": {
       "metric": "mshare_deviation",
       "period_type": "RollQ",
@@ -143,6 +154,15 @@
       "strength_floor": "moderate",
       "description": "No alarm bells in growth but slowly losing market edge to competitors.",
       "default_action": "Proactive competitive response needed to reverse the trend."
+    },
+    "unstable": {
+      "label": "Unstable / Erratic",
+      "method": "rule",
+      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "rule": "signal.magnitude >= loud AND abs(signal.coherence) < 0.3   (big total variation, near-zero net — the position is swinging hard but going nowhere)",
+      "strength_floor": "moderate",
+      "description": "Volatility itself is the finding: high loudness, ~zero coherence (e.g. -10 then +10). Reading a trend into it would be wrong — there is no net direction.",
+      "default_action": "Check data quality, demand spikiness, or stocking/ordering noise before treating any single point as a trend."
     }
   },
 
@@ -181,16 +201,34 @@
     }
   },
 
-  "relevance": {
-    "_about": "Cross-cutting FILTER, not a tier. Gates which signals are worth composing and which findings are worth surfacing. Tunable weights live here because they are definitions, not data. Strength = materiality * magnitude * persistence * horizon.",
-    "formula": "materiality * magnitude * persistence * horizon",
-    "materiality_by_rank": { "ge_90": 4, "ge_75": 3, "ge_50": 2, "lt_50": 1 },
-    "magnitude": {
-      "growth_pp": { "ge_15": 4, "ge_10": 3, "ge_5": 2, "lt_5": 1 },
-      "position_pp": { "ge_2.0": 4, "ge_1.0": 3, "ge_0.5": 2, "lt_0.5": 1 }
+  "signal_strength": {
+    "_about": "INTRINSIC loudness + shape of a signal's trajectory — a property of the signal itself, independent of whether the region matters for business. Computed over the consecutive step-deltas of the metric across the signal's window (values oldest -> now). Keep all three measures; do not collapse to one scalar.",
+    "magnitude": "V = sum(|step deltas|) — total variation / path length / LOUDNESS. Always >= 0, in metric units (pp). Answers 'how much did it move in total'. (This is the unsigned 'sum of deltas'.)",
+    "net": "D = value_now - value_start = signed sum of steps (telescopes). DIRECTION: sign(D) read through the template's 'direction' (higher_is_better) => improving / deteriorating. Answers 'where did it end up'.",
+    "coherence": "rho = D / V, in [-1, +1]. TREND vs OSCILLATION. |rho| -> 1 = monotone clean move; rho -> 0 = loud oscillation that nets to nothing (e.g. -10 then +10: V=20, D=0, rho=0). This is the signed Kaufman Efficiency Ratio. It is why V and D must both be kept: V catches the oscillation D hides, sign(D) gives the direction V lacks.",
+    "signed_strength": "D * |rho| — convenience scalar: net displacement discounted by incoherence. Equals net for a perfectly clean trend, -> 0 for a pure oscillation. Use for sorting; never as a replacement for the three measures.",
+    "loudness_bands_pp": {
+      "_note": "Buckets for V (and for |net|). pp thresholds; choose ladder by metric kind.",
+      "position": { "very_loud": 2.0, "loud": 1.0, "moderate": 0.5 },
+      "growth":   { "very_loud": 15,  "loud": 10,  "moderate": 5 }
     },
-    "persistence_by_consistent_periods": { "ge_3": 3, "eq_2": 2, "eq_1": 1 },
+    "coherence_bands": { "trend": 0.6, "oscillation": 0.3,
+      "_note": "|rho| >= trend => clean trend; |rho| < oscillation => oscillation; between => mixed." },
+    "shapes": {
+      "quiet":     "V < moderate                      -> nothing to report",
+      "trend":     "V >= loud AND |rho| >= trend       -> clean directional move (feeds Turnaround / Deteriorating)",
+      "unstable":  "V >= loud AND |rho| <  oscillation -> loud but going nowhere net (feeds Unstable)",
+      "mixed":     "otherwise                          -> some movement, partial direction"
+    }
+  },
+
+  "relevance": {
+    "_about": "EXTRINSIC filter — does a (loud) signal land somewhere that MATTERS for business? Separate from signal_strength: a signal can be loud and clean yet irrelevant (tiny region), or quiet yet relevant. relevance = materiality * loudness * horizon. Coherence does NOT enter relevance; it selects WHICH finding archetype (trend vs unstable).",
+    "formula": "materiality * loudness * horizon",
+    "materiality_by_rank": { "ge_90": 4, "ge_75": 3, "ge_50": 2, "lt_50": 1 },
+    "loudness_by_V": { "very_loud": 4, "loud": 3, "moderate": 2, "quiet": 1,
+      "_note": "Banded from signal_strength.loudness_bands_pp for the metric kind." },
     "horizon_by_period_type": { "MAT": 4, "YTD": 3, "RollQ": 2, "Month": 1 },
-    "bands": { "critical": ">=96", "high": ">=48", "moderate": ">=16", "low": "<16" }
+    "bands": { "critical": ">=48", "high": ">=24", "moderate": ">=8", "low": "<8" }
   }
 }
