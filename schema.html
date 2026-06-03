@@ -742,7 +742,6 @@ table.sig th {
 }
 body.dark-theme table.sig th { background: #0a0d12; }
 table.sig th.has-def {
-  cursor: help;
   text-decoration: underline dotted;
   text-decoration-color: #ccc;
   text-underline-offset: 3px;
@@ -750,6 +749,9 @@ table.sig th.has-def {
 table.sig th.has-def:hover { color: #2266aa; text-decoration-color: #2266aa; }
 body.dark-theme table.sig th.has-def { text-decoration-color: #444; }
 body.dark-theme table.sig th.has-def:hover { color: #6ab4d8; text-decoration-color: #6ab4d8; }
+table.sig th.sortable { cursor: pointer; user-select: none; }
+table.sig th.sorted { color: #2266aa; }
+body.dark-theme table.sig th.sorted { color: #6ab4d8; }
 table.sig td.num { text-align: right; font-family: 'Menlo', monospace; }
 table.sig tr:hover td { background: #f6f9ff; }
 body.dark-theme table.sig tr:hover td { background: #0e1828; }
@@ -1319,6 +1321,8 @@ function switchTab(name) {
 
 let signalsInited = false;
 let META = null;
+const SHAPE_ORDER = { quiet: 0, mixed: 1, trend: 2, unstable: 3 };
+let sigData = null, sigCols = [], sortState = { idx: null, dir: -1 };
 
 // Column header definitions (shown as hover tooltips in the Signals table)
 const SIG_DEFS = {
@@ -1382,30 +1386,53 @@ async function loadSignals() {
   document.getElementById('sig-interp').textContent = data.interpretation || '';
   document.getElementById('sig-meta').textContent =
     `${data.brand} · ${data.franchise} · ${data.metric} @ ${data.period} · as-of ${data.asof} · ${data.rows.length} regions`;
+  sigData = data;
+  renderSignals();
+}
 
-  const dlKeys = data.rows.length ? Object.keys(data.rows[0].readout) : [];
-  const head = ['Region', 'Trajectory (oldest→now)', ...dlKeys.map(k => 'Δ' + k.replace('delta_', '').replace('m', 'M')),
-                'V', 'net', 'ρ', 'shape', 'rank', 'relevance'];
-  const rows = data.rows.map(r => {
-    const s = r.strength;
-    const dl = dlKeys.map(k => `<td class="num">${signed(r.readout[k])}</td>`).join('');
-    return `<tr>
-      <td>${r.region}</td>
-      <td class="spark">${fmtSeries(r.series)}</td>
-      ${dl}
-      <td class="num">${s.magnitude.toFixed(2)}</td>
-      <td class="num">${signed(s.net)}</td>
-      <td class="num">${signed(s.coherence)}</td>
-      <td><span class="pill shape-${s.shape}">${s.shape}</span></td>
-      <td class="num">${r.mat_rank}</td>
-      <td class="rel-${r.relevance.band}">${r.relevance.band} (${r.relevance.score})</td>
-    </tr>`;
+function renderSignals() {
+  const out = document.getElementById('sig-results');
+  if (!sigData || !sigData.rows.length) { out.textContent = 'No rows.'; return; }
+  const dlKeys = Object.keys(sigData.rows[0].readout);
+  const dCol = k => {
+    const lbl = 'Δ' + k.replace('delta_', '').replace('m', 'M');
+    return { label: lbl, def: headerDef(lbl), num: true, key: r => r.readout[k], cell: r => signed(r.readout[k]) };
+  };
+  sigCols = [
+    { label: 'Region', def: SIG_DEFS['Region'], type: 'str', key: r => r.region, cell: r => r.region },
+    { label: 'Trajectory (oldest→now)', def: SIG_DEFS['Trajectory (oldest→now)'], key: r => r.now, cell: r => `<span class="spark">${fmtSeries(r.series)}</span>` },
+    ...dlKeys.map(dCol),
+    { label: 'V', def: SIG_DEFS['V'], num: true, key: r => r.strength.magnitude, cell: r => r.strength.magnitude.toFixed(2) },
+    { label: 'net', def: SIG_DEFS['net'], num: true, key: r => r.strength.net, cell: r => signed(r.strength.net) },
+    { label: 'ρ', def: SIG_DEFS['ρ'], num: true, key: r => r.strength.coherence, cell: r => signed(r.strength.coherence) },
+    { label: 'shape', def: SIG_DEFS['shape'], key: r => SHAPE_ORDER[r.strength.shape] ?? -1, cell: r => `<span class="pill shape-${r.strength.shape}">${r.strength.shape}</span>` },
+    { label: 'rank', def: SIG_DEFS['rank'], num: true, key: r => r.mat_rank, cell: r => r.mat_rank },
+    { label: 'relevance', def: SIG_DEFS['relevance'], num: true, key: r => r.relevance.score, cell: r => `<span class="rel-${r.relevance.band}">${r.relevance.band} (${r.relevance.score})</span>` },
+  ];
+  if (sortState.idx === null || sortState.idx >= sigCols.length)
+    sortState.idx = sigCols.findIndex(c => c.label === 'relevance');
+
+  const col = sigCols[sortState.idx];
+  const sorted = [...sigData.rows].sort((a, b) => {
+    const va = col.key(a), vb = col.key(b);
+    const cmp = col.type === 'str' ? String(va).localeCompare(String(vb)) : (va - vb);
+    return sortState.dir * cmp || (b.mat_rank - a.mat_rank);
+  });
+
+  const thead = sigCols.map((c, i) => {
+    const active = i === sortState.idx;
+    const arrow = active ? (sortState.dir < 0 ? ' ▼' : ' ▲') : '';
+    return `<th class="has-def sortable${active ? ' sorted' : ''}" title="${c.def}" onclick="sortBy(${i})">${c.label}${arrow}</th>`;
   }).join('');
-  const thead = head.map(h => {
-    const def = headerDef(h);
-    return def ? `<th title="${def}" class="has-def">${h}</th>` : `<th>${h}</th>`;
-  }).join('');
-  out.innerHTML = `<table class="sig"><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
+  const body = sorted.map(r => '<tr>' +
+    sigCols.map(c => `<td${c.num ? ' class="num"' : ''}>${c.cell(r)}</td>`).join('') + '</tr>').join('');
+  out.innerHTML = `<table class="sig"><thead><tr>${thead}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function sortBy(i) {
+  if (sortState.idx === i) sortState.dir *= -1;
+  else { sortState.idx = i; sortState.dir = sigCols[i].type === 'str' ? 1 : -1; }
+  renderSignals();
 }
 </script>
 
