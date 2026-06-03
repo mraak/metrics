@@ -274,29 +274,29 @@ body.dark-theme .row-count {
   border-top-color: #1e2232;
 }
 
-/* ── Framework sidebar ── */
+/* ── Framework (below tables) ── */
 .framework-section {
-  flex: 0 0 0;
   display: none;
-  flex-direction: column;
-  border-left: 1px solid #e0e0e0;
+  margin-top: 24px;
+  border: 1px solid #e0e0e0;
+  border-radius: 7px;
   background: #fff;
-  min-height: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  overflow: hidden;
 }
 
 body.dark-theme .framework-section {
-  background: #0a0d12;
-  border-left-color: #1e2232;
+  background: #0f1119;
+  border-color: #1e2232;
+  box-shadow: none;
 }
 
 .framework-section.open {
-  flex: 0 0 360px;
-  display: flex;
+  display: block;
 }
 
 .framework-header {
-  flex-shrink: 0;
-  padding: 14px 16px;
+  padding: 12px 16px;
   border-bottom: 1px solid #e0e0e0;
   background: #f8f9fa;
   cursor: pointer;
@@ -307,12 +307,12 @@ body.dark-theme .framework-section {
 }
 
 body.dark-theme .framework-header {
-  background: #0f1119;
+  background: #1a1f2e;
   border-bottom-color: #1e2232;
 }
 
 .framework-header h2 {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   color: #333;
   margin: 0;
@@ -324,41 +324,42 @@ body.dark-theme .framework-header h2 { color: #d4d4d4; }
   background: none;
   border: none;
   color: #aaa;
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
   padding: 0;
   line-height: 1;
 }
 
 .framework-content {
-  flex: 1 1 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 16px;
-  min-height: 0;
-  -webkit-overflow-scrolling: touch;
+  padding: 20px;
   font-size: 12px;
   line-height: 1.65;
   color: #555;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 20px 32px;
 }
 
 body.dark-theme .framework-content { color: #999; }
 
 .framework-content h3 {
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
   color: #222;
-  margin: 18px 0 6px 0;
+  margin: 0 0 6px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.framework-content h3:first-child { margin-top: 0; }
 body.dark-theme .framework-content h3 { color: #d4d4d4; }
 
 .framework-content ul {
-  margin: 4px 0 4px 16px;
+  margin: 4px 0 4px 14px;
 }
 
 .framework-content li { margin: 3px 0; }
+
+.framework-content p { margin: 4px 0; }
 
 .framework-content strong { color: #333; }
 body.dark-theme .framework-content strong { color: #ccc; }
@@ -376,6 +377,8 @@ body.dark-theme .framework-content code {
   background: #1a1f2e;
   color: #8ec85a;
 }
+
+.framework-block { }  /* each grid cell */
 
 /* ── Metrics modal ── */
 .metrics-modal {
@@ -704,77 +707,80 @@ body.dark-theme .metric-card p { color: #999; }
       </div>
 
     </div><!-- /canvas -->
+
+    <!-- Framework below tables -->
+    <div class="framework-section" id="framework-section">
+      <div class="framework-header" onclick="toggleFramework()">
+        <h2>📋 Analysis Framework</h2>
+        <button class="framework-toggle" onclick="event.stopPropagation()">✕</button>
+      </div>
+      <div class="framework-content">
+        <div class="framework-block">
+          <h3>🔄 Three-Tier System</h3>
+          <p><strong>Tier 1 → Tier 2 → Tier 3</strong></p>
+          <p>Raw data → Signals &amp; Findings → Context-specific Insights</p>
+        </div>
+
+        <div class="framework-block">
+          <h3>📊 Tier 1: Metrics</h3>
+          <p>Single source of truth in <code>region_metrics</code>.</p>
+          <ul>
+            <li><strong>Pure:</strong> units, sales_eur, market_share, mshare_deviation</li>
+            <li><strong>Temporal:</strong> growth_py/pp_sales/units/mshare_dev</li>
+            <li><strong>Peer:</strong> growth_vs_fcst_eur/units</li>
+            <li><strong>Ranks:</strong> rank_units, rank_sales_eur, rank_mshare_dev, rank_growth_py/pp, rank_growth_py/pp_mshare_dev, rank_growth_vs_fcst_eur/units, rank_trend_3m</li>
+            <li><strong>Periods:</strong> Month · RollQ · YTD · MAT</li>
+          </ul>
+        </div>
+
+        <div class="framework-block">
+          <h3>📈 Tier 2a: Signal Generation</h3>
+          <p><strong>Strength = Materiality × Magnitude × Persistence × TimeHorizon</strong></p>
+          <p>Five methods: IF/THEN Rules · K-Nearest Neighbors · Clustering · Classification · LLM Synthesis</p>
+        </div>
+
+        <div class="framework-block">
+          <h3>💡 Tier 2b: Findings</h3>
+          <p>2+ signals → structured fact, stored without user context.</p>
+          <ul>
+            <li><strong>Stars</strong> — Growth ↑↑, Position ↑, Momentum ↑</li>
+            <li><strong>Slowing Giants</strong> — Strong but gap narrowing</li>
+            <li><strong>Turnarounds</strong> — Was below, now recovering</li>
+            <li><strong>Deteriorating</strong> — Growth ↓, Position ↓, Momentum ↓</li>
+            <li><strong>Riding Wave</strong> — Growth ↑↑ but no MS gain</li>
+            <li><strong>Weak Foundation</strong> — Growing but not catching up</li>
+            <li><strong>Dangerous Stability</strong> — Flat but losing position</li>
+          </ul>
+        </div>
+
+        <div class="framework-block">
+          <h3>🎯 Tier 3: Insights</h3>
+          <p>Finding + context → actionable insight per user.</p>
+          <ul>
+            <li><strong>WHO:</strong> CEO / Sales VP / Analyst / Finance</li>
+            <li><strong>WHEN:</strong> Real-time / Weekly / Monthly / Quarterly</li>
+            <li><strong>WHAT:</strong> Target tracking / Allocation / Competitive</li>
+            <li><strong>HOW MUCH:</strong> €M revenue / market share % / volume</li>
+            <li><strong>WHY:</strong> Missing targets / Losing battle / Opportunity</li>
+          </ul>
+        </div>
+
+        <div class="framework-block">
+          <h3>✨ Key Principles &amp; How to Run</h3>
+          <ul>
+            <li>Materiality + Persistence &gt;&gt; Magnitude</li>
+            <li>Findings ≠ LLM-only (rules, stats, ML all work)</li>
+            <li>One source of truth — narratives on-demand</li>
+            <li>Context changes everything</li>
+          </ul>
+          <p style="margin-top:8px"><code>python3 compute_metrics.py</code><br>
+          <code>python3 generate_report.py</code><br>
+          See <code>ANALYSIS_FRAMEWORK.md</code></p>
+        </div>
+      </div>
+    </div>
+
   </div><!-- /diagram-section -->
-
-  <!-- Framework sidebar -->
-  <div class="framework-section" id="framework-section">
-    <div class="framework-header" onclick="toggleFramework()">
-      <h2>📋 Analysis Framework</h2>
-      <button class="framework-toggle" onclick="event.stopPropagation()">✕</button>
-    </div>
-    <div class="framework-content">
-      <h3>🔄 Three-Tier System</h3>
-      <p><strong>Tier 1 → Tier 2 → Tier 3:</strong> Raw data → Signals &amp; Findings → Context-specific Insights</p>
-
-      <h3>📊 Tier 1: Metrics (Database)</h3>
-      <p>Single source of truth. All pure computations in <code>region_metrics</code>.</p>
-      <ul>
-        <li><strong>Pure:</strong> units, sales_eur, market_share, mshare_deviation</li>
-        <li><strong>Temporal:</strong> growth_py_sales, growth_pp_sales, growth_py_units, growth_pp_units, growth_py_mshare_dev, growth_pp_mshare_dev</li>
-        <li><strong>Peer:</strong> growth_vs_fcst_eur, growth_vs_fcst_units</li>
-        <li><strong>Ranks:</strong> rank_units, rank_sales_eur, rank_mshare_dev, rank_growth_py, rank_growth_pp, rank_growth_py_mshare_dev, rank_growth_pp_mshare_dev, rank_growth_vs_fcst_eur, rank_growth_vs_fcst_units, rank_trend_3m</li>
-      </ul>
-      <p><strong>Period types:</strong> Month · RollQ (3mo) · YTD · MAT (12mo, strongest for trends)</p>
-
-      <h3>📈 Tier 2a: Signal Generation</h3>
-      <p>Single metric + temporal momentum + strength rating.</p>
-      <p><strong>Signal Strength = Materiality × Magnitude × Persistence × TimeHorizon</strong></p>
-      <p>Five generation methods:</p>
-      <ul>
-        <li>IF/THEN Rules — deterministic</li>
-        <li>K-Nearest Neighbors — peer comparison</li>
-        <li>Clustering — behavioral groupings</li>
-        <li>Classification — ML-based</li>
-        <li>LLM Synthesis — AI narrative</li>
-      </ul>
-
-      <h3>💡 Tier 2b: Findings</h3>
-      <p>2+ signals combined → structured fact, stored without user context.</p>
-      <ul>
-        <li><strong>Stars</strong> — Growth ↑↑, Position ↑, Momentum ↑</li>
-        <li><strong>Slowing Giants</strong> — Growth ↑ but gap narrowing</li>
-        <li><strong>Turnarounds</strong> — Was below, now recovering</li>
-        <li><strong>Deteriorating</strong> — Growth ↓, Position ↓, Momentum ↓</li>
-        <li><strong>Riding Wave</strong> — Growth ↑↑ but no market share gain</li>
-        <li><strong>Weak Foundation</strong> — Growth ↑ but position not improving</li>
-        <li><strong>Dangerous Stability</strong> — Growth stable but position ↓</li>
-      </ul>
-
-      <h3>🎯 Tier 3: Insights</h3>
-      <p>Finding + context → actionable insight for a specific person.</p>
-      <ul>
-        <li><strong>WHO:</strong> CEO / Sales VP / Analyst / Finance</li>
-        <li><strong>WHEN:</strong> Real-time / Weekly / Monthly / Quarterly</li>
-        <li><strong>WHAT:</strong> Target tracking / Allocation / Competitive</li>
-        <li><strong>HOW MUCH:</strong> €M revenue / market share % / volume</li>
-        <li><strong>WHY:</strong> Missing targets / Losing battle / Opportunity</li>
-      </ul>
-
-      <h3>✨ Key Principles</h3>
-      <ul>
-        <li>Materiality + Persistence &gt;&gt; Magnitude</li>
-        <li>Findings ≠ LLM-only (rules, stats, ML all work)</li>
-        <li>One source of truth (Tier 1 DB; narratives on-demand)</li>
-        <li>Context changes everything — same finding, different insights</li>
-        <li>Relative analysis — compare to brand median, not absolutes</li>
-      </ul>
-
-      <h3>🚀 How to Run</h3>
-      <p><code>python3 compute_metrics.py</code> → generates region_metrics (136,200 rows)</p>
-      <p><code>python3 generate_report.py</code> → generates problem_report.html</p>
-      <p>See <code>ANALYSIS_FRAMEWORK.md</code> for full documentation.</p>
-    </div>
-  </div>
 
 </div><!-- /main -->
 
