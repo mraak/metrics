@@ -33,19 +33,17 @@ python3 knowledge.py --signal mshare_dev_mat_step_1m_3m   # compile a signal to 
 - Loads `knowledge_definitions.json` (signal templates, finding recipes, insight framings, relevance/strength config)
 - Validates it against the live `region_metrics` schema and compiles any signal template to its `LAG`/`OVER` SQL
 
-### 3. Open the App
+### 3. Run the App
 
 ```bash
-# Server already running on port 8765
-open http://localhost:8765/schema.html
+python3 server.py            # serves schema.html + live JSON API on :8765
+open http://localhost:8765/
 ```
 
-**`schema.html` is the reporting surface** (a web app in progress):
-- Interactive 3-column diagram: Dimensions | Facts | Computed Metrics
-- Clickable metric definitions with formulas
-- Light/dark theme toggle
-- Expandable Analysis Framework panel
-- Reporting tabs (signals / findings / insights) being built on top — from scratch
+**`schema.html` is the single-file web app**, served by `server.py` (stdlib only). Tabs:
+- **Schema** — 3-column diagram, clickable metric definitions, framework panel, light/dark
+- **Signals** — live per-region signal readout + strength (magnitude/net/coherence) + relevance, computed on demand by the API (`/api/signals`) from `metrics.db` via the Knowledge Definitions
+- More reporting tabs (Findings / Insights) build on the same pattern
 
 ---
 
@@ -71,8 +69,10 @@ open http://localhost:8765/schema.html
 ├── Python Scripts:
 │   ├── compute_metrics.py
 │   │   └─ Generates region_metrics table + all Tier 1-2 metrics
-│   └── knowledge.py
-│       └─ Loads/validates Knowledge Definitions; compiles signals to SQL
+│   ├── knowledge.py
+│   │   └─ Loads/validates Knowledge Definitions; compiles signals to SQL
+│   └── server.py
+│       └─ Serves the app + live JSON API (/api/meta, /api/signals)
 │
 ├── Knowledge Definitions:
 │   └── knowledge_definitions.json

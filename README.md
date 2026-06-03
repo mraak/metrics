@@ -31,13 +31,18 @@ python3 knowledge.py
 
 **Checks:** signal templates map to real columns, recipes reference defined signals; compiles signals to SQL.
 
-### 3. Open the App
+### 3. Run the App
 
 ```bash
-open http://localhost:8765/schema.html
+python3 server.py            # serves the app + live JSON API on :8765
+open http://localhost:8765/
 ```
 
-**`schema.html` is the reporting surface** — currently the schema diagram, metrics reference, and framework panel; reporting tabs are being built on top of it as a web app.
+**`schema.html` is the single-file web app**, served by `server.py` (stdlib, no deps). Tabs:
+- **Schema** — diagram, metrics reference, framework panel
+- **Signals** — live per-region signal + strength (magnitude/net/coherence) + relevance, computed on demand from `metrics.db` via the Knowledge Definitions
+
+More reporting tabs (Findings, Insights) build on the same pattern.
 
 ---
 
@@ -59,13 +64,14 @@ metrics.db (SQLite Database)
 
 Python
 ├── compute_metrics.py  → Generates region_metrics table
-└── knowledge.py        → Loads/validates Knowledge Definitions, compiles signals to SQL
+├── knowledge.py        → Loads/validates Knowledge Definitions, compiles signals to SQL
+└── server.py           → Serves the app + live JSON API (/api/meta, /api/signals)
 
 Knowledge Definitions
 └── knowledge_definitions.json → Signal templates · finding recipes · insight framings · relevance
 
 Web App
-└── schema.html         → Reporting surface (schema diagram + metrics + framework; tabs WIP)
+└── schema.html         → Single-file app (Schema + Signals tabs; more tabs WIP)
 
 Documentation
 └── ANALYSIS_FRAMEWORK.md → Complete system (811 lines)
