@@ -716,62 +716,72 @@ body.dark-theme .metric-card p { color: #999; }
       </div>
       <div class="framework-content">
         <div class="framework-block">
-          <h3>🔄 Three-Tier System</h3>
-          <p><strong>Tier 1 → Tier 2 → Tier 3</strong></p>
-          <p>Raw data → Signals &amp; Findings → Context-specific Insights</p>
+          <h3>🪜 The Five-Rung Ladder</h3>
+          <p>Each rung adds <em>exactly one</em> thing to the rung below.</p>
+          <ul>
+            <li><strong>Metric</strong> — a number</li>
+            <li><strong>Comparative Metric</strong> — …vs a reference</li>
+            <li><strong>Signal</strong> — …watched over time</li>
+            <li><strong>Finding</strong> — …composed with other facts</li>
+            <li><strong>Insight</strong> — …who it matters to &amp; why</li>
+          </ul>
+          <p>Tiers 1–3 live in <code>region_metrics</code> (one source of truth). Tiers 4–5 are generated on demand.</p>
         </div>
 
         <div class="framework-block">
-          <h3>📊 Tier 1: Metrics</h3>
-          <p>Single source of truth in <code>region_metrics</code>.</p>
+          <h3>📊 Tier 1 · Metric</h3>
+          <p>A single value at one point in time. A <em>Sum</em> or <em>level</em> — no comparison yet.</p>
           <ul>
-            <li><strong>Pure:</strong> units, sales_eur, market_share, mshare_deviation</li>
-            <li><strong>Temporal:</strong> growth_py/pp_sales/units/mshare_dev</li>
-            <li><strong>Peer:</strong> growth_vs_fcst_eur/units</li>
-            <li><strong>Ranks:</strong> rank_units, rank_sales_eur, rank_mshare_dev, rank_growth_py/pp, rank_growth_py/pp_mshare_dev, rank_growth_vs_fcst_eur/units, rank_trend_3m</li>
-            <li><strong>Periods:</strong> Month · RollQ · YTD · MAT</li>
+            <li><strong>e.g.</strong> MAT Sales = €4.2M</li>
+            <li>units, sales_eur, market_share</li>
+          </ul>
+          <p><code>MAT Sales = -10%? No — it's just €4.2M.</code></p>
+        </div>
+
+        <div class="framework-block">
+          <h3>➗ Tier 2 · Comparative Metric</h3>
+          <p>One value measured <strong>against one reference</strong>. Still a single number — but now it means something.</p>
+          <ul>
+            <li><strong>vs last year:</strong> growth_py · <strong>vs last period:</strong> growth_pp</li>
+            <li><strong>vs national avg:</strong> mshare_deviation</li>
+            <li><strong>vs forecast:</strong> growth_vs_fcst</li>
+          </ul>
+          <p><strong>MAT Sales Growth</strong> = MAT Sales now vs last year = <code>−10%</code>.</p>
+        </div>
+
+        <div class="framework-block">
+          <h3>📈 Tier 3 · Signal</h3>
+          <p>The <strong>same comparative metric watched over time</strong> — its own trajectory. Nothing more.</p>
+          <p style="margin-top:6px"><em>"MAT Sales Growth is −10% now — but last month it was −30%, and 6 months ago −40%."</em></p>
+          <p>The signal: things aren't as bad as the −10% looks in isolation — they're <strong>recovering</strong>. The signal definition ends here.</p>
+          <ul><li>Stored shape: rank_trend_3m, growth-of-growth (growth_pp_mshare_dev)</li></ul>
+        </div>
+
+        <div class="framework-block">
+          <h3>🧩 Tier 4 · Finding</h3>
+          <p>Open-ended <strong>composition of any lower facts</strong> — metrics, comparative metrics, and (usually several) signals. Rarely one fact; in theory it could be.</p>
+          <p style="margin-top:6px"><em>"Sales Growth recovering (−40→−30→−10) <strong>AND</strong> competition vanishing <strong>AND</strong> now meeting forecast."</em></p>
+          <p>Compose however you like — or not: IF/THEN rules, clustering, classification, LLM, or just a bundle of signals. Archetypes: <strong>Star · Turnaround · Slowing Giant · Deteriorating · Riding Wave · Weak Foundation · Dangerous Stability</strong>.</p>
+        </div>
+
+        <div class="framework-block">
+          <h3>🎯 Tier 5 · Insight</h3>
+          <p>Finding + <strong>business context</strong>: to <em>who</em>, <em>when</em>, for <em>what</em>, and <em>how it matters</em>. The same finding produces a different insight — <strong>or none at all</strong> — per persona.</p>
+          <p style="margin-top:6px">From the recovering-region finding:</p>
+          <ul>
+            <li><strong>Sales Manager</strong> <span style="color:#888">(all territories, monthly, plans with rep)</span> → "Rep seems on track to recover an important region."</li>
+            <li><strong>Sales Rep</strong> <span style="color:#888">(own territory in detail)</span> → "Turnaround looks possible — keep pushing. Check all accounts for order status."</li>
+            <li><strong>CEO</strong> <span style="color:#888">(only the most problematic)</span> → <em>nothing surfaced — region is improving.</em></li>
           </ul>
         </div>
 
         <div class="framework-block">
-          <h3>📈 Tier 2a: Signal Generation</h3>
-          <p><strong>Strength = Materiality × Magnitude × Persistence × TimeHorizon</strong></p>
-          <p>Five methods: IF/THEN Rules · K-Nearest Neighbors · Clustering · Classification · LLM Synthesis</p>
-        </div>
-
-        <div class="framework-block">
-          <h3>💡 Tier 2b: Findings</h3>
-          <p>2+ signals → structured fact, stored without user context.</p>
-          <ul>
-            <li><strong>Stars</strong> — Growth ↑↑, Position ↑, Momentum ↑</li>
-            <li><strong>Slowing Giants</strong> — Strong but gap narrowing</li>
-            <li><strong>Turnarounds</strong> — Was below, now recovering</li>
-            <li><strong>Deteriorating</strong> — Growth ↓, Position ↓, Momentum ↓</li>
-            <li><strong>Riding Wave</strong> — Growth ↑↑ but no MS gain</li>
-            <li><strong>Weak Foundation</strong> — Growing but not catching up</li>
-            <li><strong>Dangerous Stability</strong> — Flat but losing position</li>
-          </ul>
-        </div>
-
-        <div class="framework-block">
-          <h3>🎯 Tier 3: Insights</h3>
-          <p>Finding + context → actionable insight per user.</p>
-          <ul>
-            <li><strong>WHO:</strong> CEO / Sales VP / Analyst / Finance</li>
-            <li><strong>WHEN:</strong> Real-time / Weekly / Monthly / Quarterly</li>
-            <li><strong>WHAT:</strong> Target tracking / Allocation / Competitive</li>
-            <li><strong>HOW MUCH:</strong> €M revenue / market share % / volume</li>
-            <li><strong>WHY:</strong> Missing targets / Losing battle / Opportunity</li>
-          </ul>
-        </div>
-
-        <div class="framework-block">
-          <h3>✨ Key Principles &amp; How to Run</h3>
+          <h3>🔍 Cross-cutting · Relevance</h3>
+          <p>A filter, not a tier. Decides which signals are worth composing and which findings are worth surfacing.</p>
+          <p><strong>Strength = Materiality × Magnitude × Persistence × Horizon</strong></p>
           <ul>
             <li>Materiality + Persistence &gt;&gt; Magnitude</li>
-            <li>Findings ≠ LLM-only (rules, stats, ML all work)</li>
-            <li>One source of truth — narratives on-demand</li>
-            <li>Context changes everything</li>
+            <li>A −4% slide in a top-10% region beats a −40% blip in a tiny one</li>
           </ul>
           <p style="margin-top:8px"><code>python3 compute_metrics.py</code><br>
           <code>python3 generate_report.py</code><br>

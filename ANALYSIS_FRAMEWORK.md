@@ -90,7 +90,11 @@ open http://localhost:8765/schema.html
 
 ---
 
-## Data Flow Overview: From Raw Data to Insights
+## Data Flow Overview: The Five-Rung Ladder
+
+Each rung adds **exactly one** thing to the rung below:
+
+**Metric** (a number) → **Comparative Metric** (…vs a reference) → **Signal** (…watched over time) → **Finding** (…composed with other facts) → **Insight** (…who it matters to & why).
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -106,107 +110,79 @@ open http://localhost:8765/schema.html
 └─────────────────────────────────────────────────────┘
                     ↓ [compute_metrics.py]
 ┌─────────────────────────────────────────────────────┐
-│ TIER 1: METRICS (Database)                         │
+│ TIER 1: METRIC — a single number, one point in time │
 ├─────────────────────────────────────────────────────┤
-│ region_metrics (136,200 rows)                       │
-│                                                     │
-│ Pure Metrics:                                       │
+│ A Sum or level. No comparison yet.                  │
 │ • units, sales_eur, market_share                   │
-│ • mshare_deviation = MS - national_avg             │
-│                                                     │
-│ Temporal Comparisons:                              │
-│ • growth_py_sales, growth_pp_sales (YoY, sequential)│
-│ • growth_py_units, growth_pp_units                 │
-│ • growth_py_mshare_dev, growth_pp_mshare_dev      │
-│                                                     │
-│ Peer Comparisons:                                  │
-│ • growth_vs_fcst_eur = actual_growth - fcst_growth │
-│ • growth_vs_fcst_units (parallel for units)        │
-│                                                     │
-│ Ranks & Scores:                                    │
-│ • rank_units, rank_sales_eur (1-100 NTILE)        │
-│ • rank_mshare_dev, rank_growth_py, rank_growth_vs_fcst_eur │
-│ • rank_trend_3m (rank change over 3 periods)      │
-│                                                     │
-│ Period Types: Month, RollQ (3m), YTD, MAT (12m)  │
-│                                                     │
-│ ➜ SINGLE SOURCE OF TRUTH for all analysis         │
+│ • e.g. MAT Sales = €4.2M  (not "-10%" — just €4.2M) │
 └─────────────────────────────────────────────────────┘
-                    ↓ [LLM or Rules or Stats]
+                    ↓ [compare to ONE reference]
 ┌─────────────────────────────────────────────────────┐
-│ TIER 2a: SIGNAL GENERATION (Multiple Methods)      │
+│ TIER 2: COMPARATIVE METRIC — value vs one reference │
 ├─────────────────────────────────────────────────────┤
-│ Input: Tier 1 metrics for region + brand median    │
+│ Still ONE number — but now it means something.      │
+│ • vs last year:    growth_py_*                     │
+│ • vs last period:  growth_pp_*                     │
+│ • vs national avg: mshare_deviation                │
+│ • vs forecast:     growth_vs_fcst_*                │
+│ • e.g. MAT Sales Growth = now vs last year = -10%  │
 │                                                     │
-│ Calculates for EACH metric:                        │
-│ • current_gap = current_value - brand_median       │
-│ • previous_gap = previous_value - previous_median  │
-│ • delta = current_gap - previous_gap (momentum)    │
-│ • momentum = WIDENING/STABLE/SHRINKING             │
-│                                                     │
-│ Output: Signal                                      │
-│ • [Metric] in [Period Type]                        │
-│ • Current: [Value] vs median [Median] = [Gap]     │
-│ • Previous: [Value] vs median [Median] = [Gap]    │
-│ • Momentum: [Gap]prev → [Gap]current               │
-│ • Status: [Icon] [Interpretation]                 │
-│                                                     │
-│ Methods:                                            │
-│ 1. IF/THEN Rules (deterministic)                   │
-│ 2. K-Nearest Neighbors (peer cluster compare)      │
-│ 3. Clustering (behavioral detection)               │
-│ 4. Classification (ML-based risk)                  │
-│ 5. LLM Synthesis (narrative understanding)         │
-│                                                     │
-│ Signal Strength = Materiality × Magnitude ×        │
-│                   Persistence × TimeHorizon        │
+│ Tiers 1+2 are stored columns in region_metrics —    │
+│ the SINGLE SOURCE OF TRUTH.                          │
 └─────────────────────────────────────────────────────┘
-                    ↓ [Combine Multiple Signals]
+                    ↓ [watch the SAME comparison over time]
 ┌─────────────────────────────────────────────────────┐
-│ TIER 2b: FINDING CATALOG ("Book of Facts")        │
+│ TIER 3: SIGNAL — a comparative metric's trajectory  │
 ├─────────────────────────────────────────────────────┤
-│ Input: 2+ signals combined                          │
-│ Storage: findings table (method-agnostic)          │
+│ The same comparative metric tracked across periods. │
+│ Nothing more. The signal IS the direction.          │
 │                                                     │
-│ Output: Finding                                     │
-│ • type: Star / Slowing Giant / Turnaround /        │
-│         Deteriorating / Riding Wave / Weak         │
-│         Foundation / Dangerous Stability           │
-│ • region, brand, metrics, current/previous values  │
-│ • strength: critical/high/moderate/low             │
-│ • confidence: 0-1 (if from ML)                     │
-│ • description: factual narrative (no context)      │
-│ • generation_method: rule/knn/clustering/ml/llm   │
+│ "MAT Sales Growth is -10% now — but last month it   │
+│  was -30%, and 6 months ago -40%."                  │
+│ → Read: not as bad as -10% looks alone; RECOVERING. │
 │                                                     │
-│ ➜ NO USER CONTEXT YET (just structured facts)     │
+│ Stored shape: rank_trend_3m, growth_pp_mshare_dev   │
+│ (a comparison's own change = growth-of-growth)      │
 └─────────────────────────────────────────────────────┘
-           ↓ [Add User/Decision Context]
+                    ↓ [compose with other facts]
 ┌─────────────────────────────────────────────────────┐
-│ TIER 3: INSIGHTS (User & Context-Specific)        │
+│ TIER 4: FINDING — open-ended composition of facts   │
 ├─────────────────────────────────────────────────────┤
-│ Input: Finding + Context Dimensions                 │
+│ Combine ANY lower facts: metrics, comparative        │
+│ metrics, and (usually several) signals. Rarely one   │
+│ fact; in theory it could be.                         │
 │                                                     │
-│ Context (mandatory):                               │
-│ • WHO: User type (CEO, Sales VP, Analyst, Finance)│
-│ • WHEN: Timing (Real-time, Weekly, Monthly, Q)    │
-│ • WHAT: Use case (Target tracking, Allocation)    │
-│ • HOW MUCH: Materiality (€M revenue, %)           │
-│ • WHY: Business consequence (Missing targets)     │
+│ "Sales Growth recovering (-40→-30→-10) AND          │
+│  competition vanishing AND now meeting forecast."   │
 │                                                     │
-│ Output: Insight                                     │
-│ • Finding reframed for specific user's decision    │
-│ • Actionable narrative tailored to role            │
-│ • Business impact contextualized                   │
+│ Compose however you like — or not: IF/THEN rules,    │
+│ KNN, clustering, classification, LLM, or just a      │
+│ bundle of signals. Optional, method-agnostic.        │
+│ Archetypes: Star / Turnaround / Slowing Giant /     │
+│ Deteriorating / Riding Wave / Weak Foundation /     │
+│ Dangerous Stability                                 │
 │                                                     │
-│ Example:                                            │
-│ Same Finding (rank 92, -4.2% vs FCST, 3Q decline) │
+│ ➜ NO USER CONTEXT YET (just a structured fact)     │
+└─────────────────────────────────────────────────────┘
+           ↓ [add business context]
+┌─────────────────────────────────────────────────────┐
+│ TIER 5: INSIGHT — who, when, what, & why it matters │
+├─────────────────────────────────────────────────────┤
+│ Finding + business context. The SAME finding yields │
+│ a different insight — OR NONE AT ALL — per persona.  │
 │                                                     │
-│ ➜ CEO Insight: €2M shortfall, need contingency    │
-│ ➜ Sales VP Insight: Investigate root cause this week │
-│ ➜ Analyst Insight: Competitor entry impact analysis │
-│ ➜ Finance Insight: Revise forecast, reallocate    │
+│ From the recovering-region finding:                 │
+│ ➜ Sales Manager (all territories, monthly):         │
+│    "Rep seems on track to recover an important       │
+│     region."                                        │
+│ ➜ Sales Rep (own territory in detail):              │
+│    "Turnaround looks possible — keep pushing. Check  │
+│     all accounts for order status."                 │
+│ ➜ CEO (only the most problematic):                  │
+│    nothing surfaced — region is improving.          │
 │                                                     │
-│ ➜ CONTEXT CHANGES EVERYTHING                      │
+│ ➜ CONTEXT DECIDES BOTH FRAMING AND WHETHER IT       │
+│   SURFACES AT ALL                                   │
 └─────────────────────────────────────────────────────┘
                          ↓
                    USER-FACING REPORTS
@@ -214,28 +190,31 @@ open http://localhost:8765/schema.html
 
 ---
 
-## Tier 1: Metrics (Database Layer)
+## Tier 1: Metric (Database Layer)
 
 ### What It Is
 
-Raw measurements and first-order computations stored in `region_metrics` SQLite table. Single source of truth for all analysis.
-
-### Four Metric Categories
-
-#### 1a. Pure Metrics (Datapoints)
-
-Direct measurements with no transformations.
+A **single value at one point in time** — a Sum or a level, with no comparison baked in. Stored in `region_metrics`.
 
 | Metric | Definition | Example |
 |--------|-----------|---------|
 | `units` | Total units sold | 1,250 |
 | `sales_eur` | Total sales value | €125,000 |
 | `market_share` | Brand % of franchise market | 45.2% |
-| `mshare_deviation` | MS deviation from national | -2.6pp |
 
-#### 1b. Temporal Comparisons (Growth & Changes)
+**The test:** "Is MAT Sales −10%?" No — MAT Sales is just €4.2M. A bare metric can't be "−10%"; that already implies a comparison, which is the next rung.
 
-Metric changes over time, period-over-period.
+---
+
+## Tier 2: Comparative Metric (Database Layer)
+
+### What It Is
+
+**One value measured against exactly one reference.** Still a single number — but now it carries meaning. `MAT Sales Growth = MAT Sales now vs last year = −10%`.
+
+Tiers 1 and 2 are both stored columns in `region_metrics` — the **single source of truth**. The split is conceptual, not physical: it's the difference between *a number* and *a number relative to something*.
+
+#### 2a. vs Time (Growth)
 
 | Metric | Formula | Example |
 |--------|---------|---------|
@@ -246,19 +225,17 @@ Metric changes over time, period-over-period.
 | `growth_py_mshare_dev` | MSDev_t - MSDev_t-12 | +0.8pp |
 | `growth_pp_mshare_dev` | MSDev_t - MSDev_t-shift | +0.3pp |
 
-#### 1c. Peer Comparisons (Deviation from Baseline)
-
-How region performs vs national/brand median.
+#### 2b. vs Baseline (Peer / National / Forecast)
 
 | Metric | Definition | Example |
 |--------|-----------|---------|
+| `mshare_deviation` | Region MS - National avg MS | -2.6pp |
 | `growth_vs_fcst_eur` | Actual growth - National forecast growth (EUR) | +8.5pp |
 | `growth_vs_fcst_units` | Actual growth - National forecast growth (units) | +3.2pp |
-| `mshare_deviation` | Region MS - National avg MS | -2.6pp |
 
-#### 1d. Ranks & Scores
+#### 2c. Ranks (vs Peer Distribution)
 
-Percentile rankings within peer groups.
+A rank is a comparative metric too — value vs the whole peer distribution, expressed as a percentile.
 
 | Metric | Definition | Range |
 |--------|-----------|-------|
@@ -267,17 +244,33 @@ Percentile rankings within peer groups.
 | `rank_mshare_dev` | Market share deviation percentile | 1-100 |
 | `rank_growth_py_sales` | YoY growth percentile | 1-100 |
 | `rank_growth_vs_fcst_eur` | Forecast beat percentile | 1-100 |
-| `rank_trend_3m` | Rank change over 3 periods | -100 to +100 |
 
 **Key Principle**: Ranks only meaningful within group ranked (brand × period type × timeframe).
 
 ---
 
-## Tier 2a: Signal Generation
+## Tier 3: Signal
 
 ### What Is a Signal?
 
-A Signal shows **how a region's performance on one metric has changed over time relative to its peers**.
+A Signal is **a single comparative metric watched over time** — its own trajectory. That's the whole definition. It takes one Tier-2 number and asks: which way is it moving?
+
+> "MAT Sales Growth is **−10%** now — but last month it was **−30%**, and 6 months ago **−40%**."
+
+Looking at the −10% alone, the region looks like it's losing. The signal reframes it: the comparison itself is **recovering**. The signal definition ends right here — it adds the time axis to one comparative metric and nothing else.
+
+Two stored columns are signals by construction — a comparison's own change over time:
+
+| Stored Signal | Definition |
+|---------------|-----------|
+| `rank_trend_3m` | rank_sales_eur[t] − rank_sales_eur[t−3] (rank moving over time) |
+| `growth_pp_mshare_dev` | how the market-share-deviation comparison itself shifts period-over-period |
+
+Most signals, though, are read on demand by laying a comparative metric out across `period_type` history.
+
+### Signal Structure (vs-peer variant)
+
+A common, useful framing tracks the comparative metric as a **gap to peer median** and watches that gap move:
 
 ### Signal Structure
 
@@ -299,9 +292,9 @@ Momentum: +16.2pp → +27.7pp = +11.5pp WIDENING
 Status: 🚀 Exceptionally strong and accelerating
 ```
 
-### Signal Strength: The Critical Filter
+### Relevance (Cross-cutting Filter — NOT part of the Signal definition)
 
-**Not all signals matter equally.** Signal strength depends on:
+Strength is **not a tier and not what makes something a Signal**. It's a filter applied *across* the ladder to decide which signals are worth composing into Findings, and which Findings are worth surfacing as Insights. A signal is still a signal whether it's strong or noise — strength just gates attention. It depends on:
 
 #### Dimension 1: Materiality (Region Size/Rank)
 ```
@@ -410,11 +403,17 @@ WEAK Signal Example:
 
 ---
 
-## Tier 2b: Finding Generation Methods
+## Tier 4: Finding
 
 ### What Is a Finding?
 
-A **Finding is a structured fact** that can be generated via multiple methods. Findings are **not inherently narrative** — they are stored in a catalog and later recontextualized as Insights.
+A Finding is an **open-ended composition of any lower-tier facts** — simple metrics, comparative metrics, and (most often) several signals. It rarely reduces to a single data point, though in theory it could.
+
+> "Sales Growth is recovering (−40 → −30 → −10) **AND** competition is vanishing **AND** the region is now meeting forecast."
+
+Each clause above is a lower-rung fact; the Finding is the useful combination of them. This is where you may bring in whatever machinery helps — IF/THEN rules, KNN, clustering, classification, LLM synthesis — **or nothing at all**: a Finding can simply be a bundle of signals if you have no better way to compose them. It is a **structured fact, not yet narrative for a user**, stored in a catalog and later recontextualized as Insights.
+
+The methods below are *options* for composing Findings, not requirements.
 
 ### Method 1: IF/THEN Rules (Deterministic)
 
@@ -595,7 +594,7 @@ Do you need to capture nuance and business context?
 
 ---
 
-## Tier 2c: Finding Catalog Storage
+## Finding Catalog Storage
 
 ### The "Book of Facts"
 
@@ -673,11 +672,11 @@ CREATE INDEX idx_findings_brand ON findings(brand_name, year_month);
 
 ---
 
-## Tier 3: Insights (Context Layer)
+## Tier 5: Insight
 
 ### What Is an Insight?
 
-An **Insight is a Finding recontextualized for a specific user, decision, and timeframe.**
+An **Insight is a Finding plus business context** — *to whom, when, for what, and how it matters*. The same Finding produces a **different insight for each persona — or none at all** when the Finding is irrelevant to that person's job. Context decides both the framing and whether the Finding surfaces at all.
 
 ### Mandatory Context Dimensions
 
@@ -685,81 +684,67 @@ Every Insight must answer:
 
 | Dimension | Meaning | Examples |
 |-----------|---------|----------|
-| **WHO** | User type | CEO, Regional Sales VP, Market Analyst, Finance |
-| **WHEN** | Timing | Real-time, Weekly, Monthly, Quarterly |
-| **WHAT** | Use case | Sales target tracking, Resource allocation, Competitive response |
-| **HOW MUCH** | Materiality | €2M revenue, 3% market share, customer count |
-| **WHY** | Business consequence | Missing targets, Losing competitor battle, Opportunity |
+| **WHO** | The persona and what they look at | Sales Manager, Sales Rep, CEO |
+| **WHEN** | Timing / cadence | Monthly planning, daily field work, board review |
+| **WHAT** | The decision it feeds | Territory plan, account follow-up, escalation |
+| **HOW MUCH** | Materiality | Region importance, € at stake |
+| **WHY** | Business consequence | On track / needs a push / not their problem |
 
-### Same Finding, Different Insights
+### Personas (this system)
 
-**Finding**: Region rank 92, -4.2% FCST miss on MAT, worsening 3 quarters
+| Persona | What they look at |
+|---------|-------------------|
+| **Sales Manager** | All territories, every month; builds the plan with each rep |
+| **Sales Rep** | Only their own territory — but every region in detail |
+| **CEO** | A picture of the *most problematic* regions and territories |
 
-**Insight for CEO (Board Review):**
+### Same Finding, Different Insights — or Silence
+
+**Finding**: A previously declining region is recovering — MAT Sales Growth −40% → −30% → −10%, competition vanishing, now meeting forecast.
+
+**Insight for the Sales Manager (monthly territory review):**
 ```
-Our premium market region (top 8%) is deteriorating structurally. Growth has 
-missed forecast by 4.2pp on a moving 12-month basis and has worsened for 
-three consecutive quarters. This represents €2M in unplanned shortfall 
-against annual targets. Corporate contingency planning needed if trend continues.
-```
-
-**Insight for Sales VP (Weekly Accountability):**
-```
-Your #1 performing region is trending negatively over 3 quarters. This isn't 
-a one-month blip—it's persistent. Recommend: (1) Root cause analysis this 
-week, (2) Competitive field audit, (3) Sales team coaching review. If 
-execution-driven, we can recover quickly.
+Your rep seems on track to recover an important region. Keep it on the plan
+and confirm the trajectory holds next month.
 ```
 
-**Insight for Market Analyst (Quarterly Competitive Review):**
+**Insight for the Sales Rep (their own territory):**
 ```
-Our premium region's three-quarter deterioration aligns with known competitor 
-entry in Q2. The -4.2pp forecast miss suggests competitor is winning share 
-in high-value segment. Recommend: (1) Win/loss analysis, (2) Pricing/ 
-positioning review, (3) Customer satisfaction audit.
+Turnaround of this region looks possible — but keep pushing, it isn't won yet.
+Check all accounts for the status of their orders.
 ```
 
-**Insight for Finance (Budget Planning):**
+**Insight for the CEO (most-problematic view):**
 ```
-Region forecast miss (-€2M vs budget) now appears structural (3 quarters 
-deterioration). Recommend: (1) Revise annual forecast down by €2M, (2) 
-Reallocate contingency to stronger regions, (3) Decide invest-to-win or 
-optimize-for-efficiency.
+(nothing surfaced)
 ```
+The region is *improving*, so it never enters the CEO's "most problematic" view. The same Finding correctly yields **no insight** for this persona — suppression is a valid, intended output.
 
 ---
 
 ## Key Principles
 
-### 1. Signal Strength Matters More Than Magnitude
+### 1. Each Rung Adds Exactly One Thing
 
-A small magnitude in a big region over 3 months > large magnitude in tiny region for 1 month.
+Metric (a number) → Comparative Metric (vs a reference) → Signal (watched over time) → Finding (composed with other facts) → Insight (who & why it matters). Don't collapse rungs: a growth % is *not* a signal until you watch it move; a signal is *not* a finding until you combine it with something.
 
-**Why**: Materiality (who cares) + Persistence (is it real trend) > absolute size of number
+### 2. Relevance Is a Filter, Not a Rung
 
-### 2. Context Changes Everything
+Strength = Materiality × Magnitude × Persistence × Horizon gates *which* signals and findings deserve attention. A −4% slide in a top-10% region over 3 quarters beats a −40% blip in a tiny region for one month. Materiality + Persistence >> Magnitude.
 
-The same Finding generates completely different Insights for:
-- **CEO**: Strategic impact, contingency planning
-- **Sales VP**: Operational accountability, team coaching
-- **Analyst**: Competitive dynamics, positioning
-- **Finance**: Budget implications, resource allocation
+### 3. Context Decides Framing AND Whether It Surfaces
 
-### 3. One Source of Truth (Tier 1)
+The same Finding yields a different insight per persona — or **none at all**. Suppression is a valid output: a recovering region is invisible to a CEO who only wants the most problematic ones.
 
-Database stores only raw metrics and computations. All narratives (Signals, Findings, Insights) are generated on-demand from Tier 1 using documented rules.
+### 4. One Source of Truth (Tiers 1–2)
 
-**Benefit**: Update Tier 1 once, infinite interpretations without data duplication.
+The database stores only metrics and comparative metrics. Signals, Findings, and Insights are generated on-demand from those columns using documented rules.
 
-### 4. Findings Are Structured Facts, Not Narratives
+**Benefit**: Update the stored metrics once, infinite interpretations without data duplication.
 
-- Can be generated via rules, statistics, ML, or LLM
-- Stored in catalog without user context
-- Later recontextualized as Insights
+### 5. Findings Are Structured Facts, Composed However You Like
 
-### 5. Multiple Generation Methods for Findings
-
-IF/THEN rules, KNN, clustering, classification, or LLM synthesis—pick what works best for each situation.
+Open-ended composition: IF/THEN rules, KNN, clustering, classification, LLM synthesis — or simply a bundle of signals. Stored without user context, recontextualized later as Insights.
 
 ---
 
@@ -767,10 +752,11 @@ IF/THEN rules, KNN, clustering, classification, or LLM synthesis—pick what wor
 
 | Tier | Responsibility | Technology | When to Update |
 |------|---|---|---|
-| **Tier 1** | Metrics | Database + SQL | compute_metrics.py (monthly or on schedule) |
-| **Tier 2a** | Signal Generation | Algorithm/LLM | On-demand (per user query) |
-| **Tier 2b** | Finding Catalog | Database + any method | On-demand or scheduled |
-| **Tier 3** | Insights | LLM + User Context | On-demand (per specific decision) |
+| **Tier 1** | Metric (levels) | Database + SQL | compute_metrics.py (monthly or on schedule) |
+| **Tier 2** | Comparative Metric | Database + SQL | compute_metrics.py (monthly or on schedule) |
+| **Tier 3** | Signal (over time) | Algorithm/LLM over stored columns | On-demand (per user query) |
+| **Tier 4** | Finding (composition) | Any method — rules/stats/ML/LLM | On-demand or scheduled |
+| **Tier 5** | Insight (context) | LLM + persona context | On-demand (per specific decision) |
 
 ---
 
@@ -779,22 +765,22 @@ IF/THEN rules, KNN, clustering, classification, or LLM synthesis—pick what wor
 ```
 User asks: "What's wrong with Zürich 8051 in Oncleris?"
        ↓
-Database fetches Tier 1 metrics for Zürich 8051 + brand median
+Database fetches stored metrics + comparative metrics (Tiers 1-2)
+for Zürich 8051 + brand median
        ↓
-LLM generates Signals using Signal Strength rules
-  - Filter out weak signals (low materiality, one-off anomalies)
-  - Prioritize signals with high strength
+Read each comparative metric over time → Signals (Tier 3)
+  - Filter by relevance (materiality, persistence — drop one-off noise)
        ↓
-LLM combines Signals into Findings
-  - Check coherence: do signals tell consistent story?
-  - Assign Finding type (Star, Turnaround, Deteriorating, etc.)
-  - Write narrative: what's happening and why
+Compose Signals (+ any other facts) into a Finding (Tier 4)
+  - Check coherence: do the facts tell a consistent story?
+  - Assign archetype (Star, Turnaround, Deteriorating, etc.)
        ↓
-[IF user provides context] LLM reframes as Insight
-  - WHO: Sales VP, WHEN: weekly, WHAT: accountability, HOW MUCH: €2M, WHY: missing target
-  - Write action-specific insight for that user
+[IF a persona is given] Reframe as an Insight (Tier 5)
+  - WHO: Sales Rep, WHEN: daily field work, WHAT: account follow-up
+  - ...or suppress entirely if irrelevant to that persona (e.g. CEO
+    on an improving region)
        ↓
-Present: Signals → Findings → [Insight if context provided]
+Present: Signals → Finding → [Insight or silence, per persona]
 ```
 
 ---
