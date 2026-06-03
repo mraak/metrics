@@ -741,6 +741,15 @@ table.sig th {
   font-weight: 700; position: sticky; top: 0; background: #fff;
 }
 body.dark-theme table.sig th { background: #0a0d12; }
+table.sig th.has-def {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: #ccc;
+  text-underline-offset: 3px;
+}
+table.sig th.has-def:hover { color: #2266aa; text-decoration-color: #2266aa; }
+body.dark-theme table.sig th.has-def { text-decoration-color: #444; }
+body.dark-theme table.sig th.has-def:hover { color: #6ab4d8; text-decoration-color: #6ab4d8; }
 table.sig td.num { text-align: right; font-family: 'Menlo', monospace; }
 table.sig tr:hover td { background: #f6f9ff; }
 body.dark-theme table.sig tr:hover td { background: #0e1828; }
@@ -1311,6 +1320,25 @@ function switchTab(name) {
 let signalsInited = false;
 let META = null;
 
+// Column header definitions (shown as hover tooltips in the Signals table)
+const SIG_DEFS = {
+  'Region': 'Postal-code region; the territory prefix is part of the name.',
+  'Trajectory (oldest→now)': 'The metric’s values across the signal window — oldest period on the left, now on the right.',
+  'V': 'Magnitude V = Σ|step deltas| — total variation (loudness) of the trajectory, in pp (≥0). How much it moved in total, regardless of direction.',
+  'net': 'Net D = value_now − value_start (signed sum of steps). Direction: + = improving, − = deteriorating (per the signal’s higher-is-better convention).',
+  'ρ': 'Coherence ρ = net ÷ V, in [−1,+1]. Signed Kaufman Efficiency Ratio: |ρ|→1 = clean trend; ρ→0 = loud oscillation that nets to nothing.',
+  'shape': 'Trajectory shape from V × ρ: trend (loud + clean), unstable (loud + incoherent), quiet (little movement), mixed (partial direction).',
+  'rank': 'Materiality: NTILE percentile of sales within brand × period (100 = largest region). Feeds relevance, not strength.',
+  'relevance': 'Extrinsic importance = Materiality × Loudness × Horizon (band + score). Does this loud signal land somewhere worth acting on? Separate from strength.'
+};
+function headerDef(label) {
+  if (label.startsWith('Δ')) {
+    const n = label.slice(1); // e.g. "1M", "3M"
+    return `Net change vs ${n} ago: value_now − value(−${n}), in pp. The longest Δ equals the trajectory’s net D.`;
+  }
+  return SIG_DEFS[label] || '';
+}
+
 async function initSignals() {
   signalsInited = true;
   try {
@@ -1356,7 +1384,7 @@ async function loadSignals() {
     `${data.brand} · ${data.franchise} · ${data.metric} @ ${data.period} · as-of ${data.asof} · ${data.rows.length} regions`;
 
   const dlKeys = data.rows.length ? Object.keys(data.rows[0].readout) : [];
-  const head = ['Region', 'Trajectory (oldest→now)', ...dlKeys.map(k => k.replace('delta_', 'Δ').replace('m', 'm')),
+  const head = ['Region', 'Trajectory (oldest→now)', ...dlKeys.map(k => 'Δ' + k.replace('delta_', '').replace('m', 'M')),
                 'V', 'net', 'ρ', 'shape', 'rank', 'relevance'];
   const rows = data.rows.map(r => {
     const s = r.strength;
@@ -1373,7 +1401,11 @@ async function loadSignals() {
       <td class="rel-${r.relevance.band}">${r.relevance.band} (${r.relevance.score})</td>
     </tr>`;
   }).join('');
-  out.innerHTML = `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+  const thead = head.map(h => {
+    const def = headerDef(h);
+    return def ? `<th title="${def}" class="has-def">${h}</th>` : `<th>${h}</th>`;
+  }).join('');
+  out.innerHTML = `<table class="sig"><thead><tr>${thead}</tr></thead><tbody>${rows}</tbody></table>`;
 }
 </script>
 
