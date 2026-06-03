@@ -59,7 +59,11 @@ metrics.db (SQLite Database)
 
 Python
 ├── compute_metrics.py  → Generates region_metrics table
-└── generate_report.py  → Creates problem_report.html
+├── generate_report.py  → Creates problem_report.html
+└── knowledge.py        → Loads/validates Knowledge Definitions, compiles signals to SQL
+
+Knowledge Definitions
+└── knowledge_definitions.json → Signal templates · finding recipes · insight framings · relevance
 
 HTML Reports
 ├── schema.html         → Database diagram + metrics + framework
@@ -72,9 +76,9 @@ Documentation
 
 ---
 
-## 🔄 The Five-Rung Ladder: Raw Data → Insights
+## 🔄 From Metric to Insight: Raw Data → Decisions
 
-Each rung adds **exactly one** thing to the rung below.
+Five tiers — each adds **exactly one** thing to the tier below.
 
 ```
 Raw Data
@@ -109,17 +113,17 @@ User-Facing Reports
 
 Tiers 1–2 are stored columns in `region_metrics` (single source of truth);
 Tiers 3–5 are generated on demand. **Relevance** (Materiality × Magnitude ×
-Persistence × Horizon) is a cross-cutting filter, not a rung.
+Persistence × Horizon) is a cross-cutting filter, not a tier.
 
 ---
 
 ## 🎯 Core Concepts
 
-### 1. Each Rung Adds Exactly One Thing
+### 1. Each Tier Adds Exactly One Thing
 
-A growth % is *not* a signal until you watch it move over time; a signal is *not* a finding until you combine it with other facts. Don't collapse the rungs.
+A growth % is *not* a signal until you watch it move over time; a signal is *not* a finding until you combine it with other facts. Don't collapse the tiers.
 
-### 2. Relevance Is a Filter, Not a Rung
+### 2. Relevance Is a Filter, Not a Tier
 
 ```
 Strength = Materiality × Magnitude × Persistence × Horizon
@@ -176,6 +180,19 @@ It gates *which* signals and findings deserve attention. **Materiality + Persist
 
 A couple of columns are signals by construction (a comparison's own change): `rank_trend_3m`, `growth_pp_mshare_dev`. Most are read on demand by laying a comparative metric across `period_type` history.
 
+**Signals are derived, not stored.** `region_metrics` is already a time series (25 consecutive months per slice), so a signal is just a **window function** (`LAG`/`LEAD`/`OVER`) over an existing column — described by four parameters: *metric · period_type (window width) · LAG(n) (step back) · read-out (raw or delta)*. We don't precompute signal columns (combinatorial explosion); the two that exist are just a **cache** of the most-used ones. Materialize only for performance.
+
+```sql
+-- "mshare_deviation on MAT: Now, -1M, -2M, plus a 3-month delta"
+SELECT year_month, mshare_deviation AS now,
+       LAG(mshare_deviation,1) OVER w AS m1,
+       LAG(mshare_deviation,2) OVER w AS m2,
+       mshare_deviation - LAG(mshare_deviation,3) OVER w AS delta_3m
+FROM region_metrics
+WHERE brand_name=:brand AND period_type=:period AND region_name=:region
+WINDOW w AS (ORDER BY year_month);
+```
+
 ### Relevance (cross-cutting filter, not the Signal definition)
 
 | Dimension | Levels | Impact |
@@ -227,6 +244,40 @@ Same Finding (a recovering region) → Manager sees a recovery on track, Rep get
 
 ---
 
+## 🗄️ Storage: Three Stores
+
+| Store | Holds | Tiers |
+|-------|-------|-------|
+| **`region_metrics`** (SQL) | metrics + comparative metrics — the source of truth | 1–2 |
+| **Knowledge Definitions** | *definitions*: signal templates, finding recipes, insight framings | the "how" for 3–5 |
+| **Finding catalog** ("book of facts") | composed findings, each with a JSON provenance snapshot of its signals | 4 |
+
+**Do we collect Signals as JSON in a separate store, next to Findings?** No separate store of signal *values* — they regenerate from `region_metrics`. JSON appears in exactly one place: **inside each Finding**, as the snapshot of the signals + values that produced it. So a Finding carries its own evidence, with no parallel signal table that could drift.
+
+The Finding catalog is **append-only immutable history**: a Finding is never expired or edited — it records what was true and material *then*, anchored to its data snapshot. A changed reality is a *new* Finding, so the catalog accumulates into a time series of facts (and a run of Findings is itself a signal). How business context maps onto these facts is worked through in [`ANALYSIS_FRAMEWORK.md`](ANALYSIS_FRAMEWORK.md) → *Design: Mapping Business Context to Findings* (context-free facts · deterministic read-time framings · LLM phrasing on survivors only).
+
+## 📚 Knowledge Definitions
+
+The curated library of **definitions, not values** — institutional memory of *what's worth looking at and how to read it*. A concrete artifact in the repo:
+
+- **`knowledge_definitions.json`** — the store (signal templates · finding recipes · insight framings · relevance weights)
+- **`knowledge.py`** — loads + validates it against the live schema and compiles signals to SQL
+
+```bash
+python3 knowledge.py                      # summary + validation
+python3 knowledge.py --signal mshare_dev_mat_trend_3m   # show the LAG/OVER SQL it compiles to
+```
+
+Three kinds of entries:
+
+1. **Signal templates** — a named binding of the four signal parameters + an interpretation (e.g. `mshare_dev_mat_trend_3m`); compiles to a window query on demand.
+2. **Finding recipes** — the rules / clustering configs / model prompts that compose signals into a Finding archetype (declares `requires_signals`).
+3. **Insight framings** — per-persona `surface_when` / `suppress_when` rules: what to surface, how to phrase, and when to stay silent.
+
+It is **authored by analysts** (an Option-1 custom SQL signal becomes a saved, named entry), **version-controlled and auditable** like code, and stores the *how* — never the *what*. Update the metric table once → every entry re-derives. Hot entries get promoted to cached columns purely for speed.
+
+---
+
 ## 🔗 Interactive Reports
 
 ### schema.html
@@ -270,7 +321,7 @@ System:
 
 - How to run (both scripts, both servers)
 - File structure (directory layout, grain, row counts)
-- Data flow (the five-rung ladder, detailed)
+- Data flow (the five tiers, detailed)
 - Tiers 1–2: metrics & comparative metrics (definitions, formulas, examples)
 - Tier 3: signals (trajectory reading + relevance filter, interpretation tables)
 - Tier 4: findings (7 archetypes, composition methods, schema)
@@ -281,8 +332,8 @@ System:
 
 ## ✨ Key Principles
 
-1. **Each rung adds exactly one thing** (don't collapse metric/comparison/signal/finding)
-2. **Relevance is a filter, not a rung** (Materiality + Persistence >> Magnitude)
+1. **Each tier adds exactly one thing** (don't collapse metric/comparison/signal/finding)
+2. **Relevance is a filter, not a tier** (Materiality + Persistence >> Magnitude)
 3. **Findings ≠ LLM-only** (rules, stats, ML, or just signals all work)
 4. **One source of truth** (Tiers 1–2 stored; signals/findings/insights on-demand)
 5. **Context decides framing and whether it surfaces** (same Finding → different insight, or silence)
@@ -291,7 +342,7 @@ System:
 
 ## Questions?
 
-This system is a **five-rung ladder**, each rung adding one thing:
+This system is **five tiers**, each adding one thing:
 - **Metric** → a number
 - **Comparative Metric** → vs a reference
 - **Signal** → watched over time

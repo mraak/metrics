@@ -1,0 +1,196 @@
+{
+  "_about": "Knowledge Definitions — the curated library of DEFINITIONS, not values. Stores the 'how' for Tiers 3-5 (Signal, Finding, Insight). Every entry re-derives fresh values from region_metrics whenever the data refreshes; nothing here is a stored result. Analyst-authored, version-controlled, auditable like code. See ANALYSIS_FRAMEWORK.md.",
+  "version": "1.0.0",
+  "updated": "2026-06-03",
+
+  "enums": {
+    "period_type": ["Month", "RollQ", "YTD", "MAT"],
+    "readout": ["series", "delta", "slope"],
+    "direction": ["higher_is_better", "lower_is_better"],
+    "method": ["rule", "clustering", "classification", "llm", "signal_bundle"],
+    "strength_band": ["low", "moderate", "high", "critical"]
+  },
+
+  "signal_templates": {
+    "_about": "A Signal = a single comparative metric watched over time. Each template binds the four parameters {metric, period_type, lags, readout} to a name + interpretation. Values are produced on demand by a LAG/OVER window query over region_metrics; never precomputed here. 'lags' are calendar-month offsets (0 = now). 'readout': series = the lagged values; delta = value[0] - value[delta_lag]; slope = linear trend across lags.",
+
+    "mshare_dev_mat_trend_3m": {
+      "metric": "mshare_deviation",
+      "period_type": "MAT",
+      "lags": [0, 1, 2, 3],
+      "readout": "delta",
+      "delta_lag": 3,
+      "direction": "higher_is_better",
+      "interpretation": "Is our relative market-share position widening or closing over the last quarter, on a 12-month base? Positive delta = gaining relative ground; negative = slipping. The user's Option-1 example: mshare_deviation on MAT Now / -1M / -2M with a 3-month delta."
+    },
+    "mshare_dev_rollq_step3": {
+      "metric": "mshare_deviation",
+      "period_type": "RollQ",
+      "lags": [0, 3],
+      "readout": "delta",
+      "delta_lag": 3,
+      "direction": "higher_is_better",
+      "interpretation": "RollQ Now vs RollQ -3Month: relative position shift across one full rolling-quarter window. Window width (RollQ) and step back (LAG 3) are the two orthogonal axes."
+    },
+    "growth_py_sales_mat_momentum": {
+      "metric": "growth_py_sales",
+      "period_type": "MAT",
+      "lags": [0, 1, 2, 3, 6],
+      "readout": "slope",
+      "direction": "higher_is_better",
+      "interpretation": "Trajectory of YoY sales growth on a 12-month base. The canonical '-10% now, -30% last month, -40% six months ago -> recovering' read. Positive slope = improving even when the level is still negative."
+    },
+    "growth_vs_fcst_eur_rollq_trend": {
+      "metric": "growth_vs_fcst_eur",
+      "period_type": "RollQ",
+      "lags": [0, 1, 2, 3],
+      "readout": "delta",
+      "delta_lag": 3,
+      "direction": "higher_is_better",
+      "interpretation": "Are we pulling toward or away from national forecast over the last quarter? Positive = converging on / beating plan; negative = falling behind plan."
+    },
+    "growth_py_units_mat_momentum": {
+      "metric": "growth_py_units",
+      "period_type": "MAT",
+      "lags": [0, 1, 2, 3],
+      "readout": "slope",
+      "direction": "higher_is_better",
+      "interpretation": "Volume-side counterpart to growth_py_sales momentum. Diverging unit vs value trajectories flag price/mix effects."
+    },
+    "rank_sales_eur_trend_3m": {
+      "metric": "rank_sales_eur",
+      "period_type": "MAT",
+      "lags": [0, 3],
+      "readout": "delta",
+      "delta_lag": 3,
+      "direction": "higher_is_better",
+      "interpretation": "Change in volume rank over 3 periods. NOTE: this exact signal is cached in region_metrics as rank_trend_3m for performance — a materialized hot signal, not a separate definition.",
+      "cached_as": "rank_trend_3m"
+    },
+    "mshare_dev_pp_month": {
+      "metric": "growth_pp_mshare_dev",
+      "period_type": "Month",
+      "lags": [0],
+      "readout": "series",
+      "direction": "higher_is_better",
+      "interpretation": "Period-over-period change in market-share deviation. NOTE: a 'growth-of-growth' column — the comparison's own change is already baked into region_metrics, so this template reads a single column rather than lagging.",
+      "cached_as": "growth_pp_mshare_dev"
+    }
+  },
+
+  "finding_recipes": {
+    "_about": "A Finding = open-ended composition of lower facts (usually several signals). Each recipe is method-agnostic: 'rule' here is a human-readable predicate an engine OR an LLM can evaluate. 'requires_signals' lists the signal templates that feed it; 'gap' refers to value vs brand peer-median, 'momentum' to the signal's direction (WIDENING/STABLE/SHRINKING for growth; IMPROVING/STABLE/DECLINING for position). Thresholds come from relevance.magnitude.",
+
+    "star": {
+      "label": "Star",
+      "method": "rule",
+      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m"],
+      "rule": "growth_gap >= +10pp AND growth_momentum == WIDENING AND position_gap > 0 AND position_momentum == IMPROVING",
+      "strength_floor": "high",
+      "description": "Exceptional growth, pulling further ahead of peers, gaining market share.",
+      "default_action": "Monitor sustainability; replicate practices across similar regions."
+    },
+    "slowing_giant": {
+      "label": "Slowing Giant",
+      "method": "rule",
+      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m"],
+      "rule": "growth_gap > 0 AND growth_momentum == SHRINKING AND position_momentum == DECLINING",
+      "strength_floor": "moderate",
+      "description": "Still above peers but momentum turning negative; execution needs focus.",
+      "default_action": "Investigate cause of slowdown before position deteriorates further."
+    },
+    "turnaround": {
+      "label": "Turnaround",
+      "method": "rule",
+      "requires_signals": ["mshare_dev_mat_trend_3m", "growth_py_sales_mat_momentum"],
+      "rule": "position_gap < 0 AND position_momentum == IMPROVING AND persistence >= 3_periods",
+      "strength_floor": "moderate",
+      "description": "Was below/far below median, now recovering on a consistent multi-period trajectory.",
+      "default_action": "Support what's working; continue momentum-building actions."
+    },
+    "deteriorating": {
+      "label": "Deteriorating",
+      "method": "rule",
+      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m", "growth_vs_fcst_eur_rollq_trend"],
+      "rule": "growth_gap < 0 AND growth_momentum == SHRINKING AND position_momentum == DECLINING",
+      "strength_floor": "high",
+      "description": "Dual problem: structural underperformance + worsening trend + likely forecast miss.",
+      "default_action": "Diagnose root cause (execution, market, staffing); consider intervention."
+    },
+    "riding_wave": {
+      "label": "Riding the Wave",
+      "method": "rule",
+      "requires_signals": ["growth_vs_fcst_eur_rollq_trend", "mshare_dev_mat_trend_3m"],
+      "rule": "growth_vs_fcst >= +10pp AND position_momentum == STABLE",
+      "strength_floor": "moderate",
+      "description": "Strong absolute numbers but not outpacing peers; national market booming.",
+      "default_action": "Good for revenue; if share growth is the goal, need a differentiation strategy."
+    },
+    "weak_foundation": {
+      "label": "Weak Foundation",
+      "method": "rule",
+      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m"],
+      "rule": "growth_gap > 0 AND (position_gap <= -1.0pp OR position_momentum != IMPROVING)",
+      "strength_floor": "low",
+      "description": "Growing at a healthy rate but not catching up to peers; secondary market.",
+      "default_action": "Viable if efficiency is the goal; major investment needed to elevate to strategic status."
+    },
+    "dangerous_stability": {
+      "label": "Dangerous Stability",
+      "method": "rule",
+      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m"],
+      "rule": "abs(growth_momentum_delta) < 2pp AND position_momentum == DECLINING",
+      "strength_floor": "moderate",
+      "description": "No alarm bells in growth but slowly losing market edge to competitors.",
+      "default_action": "Proactive competitive response needed to reverse the trend."
+    }
+  },
+
+  "insight_framings": {
+    "_about": "An Insight = a Finding + business context for ONE persona. Each framing declares the persona's scope and cadence, WHICH findings to surface, when to STAY SILENT, and how to phrase it. The same finding yields a different insight per persona — or none at all. 'surface_when'/'suppress_when' are predicates over a finding's archetype, strength, and materiality.",
+
+    "sales_manager": {
+      "label": "Sales Manager",
+      "scope": "all_territories",
+      "cadence": "monthly",
+      "decision": "Builds the monthly plan with each rep across all territories.",
+      "surface_when": "strength >= moderate AND materiality >= medium  (anything plan-relevant in any territory)",
+      "suppress_when": "strength == low AND materiality < medium",
+      "tone": "planning, coaching, prioritization",
+      "phrasing_guide": "Frame as where to spend the rep's attention this month. Recovery -> 'rep on track to recover an important region, keep it on the plan'."
+    },
+    "sales_rep": {
+      "label": "Sales Rep",
+      "scope": "own_territory_only",
+      "cadence": "daily_to_weekly",
+      "decision": "Works every region of their own territory in detail.",
+      "surface_when": "territory == rep.territory  (everything in my patch, in detail)",
+      "suppress_when": "territory != rep.territory",
+      "tone": "concrete, action-oriented, account-level",
+      "phrasing_guide": "Always give a next action. Recovery -> 'turnaround possible, keep pushing; check all accounts for order status'."
+    },
+    "ceo": {
+      "label": "CEO",
+      "scope": "all_territories",
+      "cadence": "monthly_to_quarterly",
+      "decision": "Wants a picture of the MOST PROBLEMATIC regions and territories.",
+      "surface_when": "archetype in [deteriorating, dangerous_stability] AND strength == critical AND materiality == high",
+      "suppress_when": "archetype in [star, turnaround, riding_wave] OR direction == improving  (an improving region is NOT a problem -> silence)",
+      "tone": "strategic, exception-only, € at stake",
+      "phrasing_guide": "Only escalate true problems with scale. A recovering region produces NO insight for the CEO — suppression is the correct output."
+    }
+  },
+
+  "relevance": {
+    "_about": "Cross-cutting FILTER, not a tier. Gates which signals are worth composing and which findings are worth surfacing. Tunable weights live here because they are definitions, not data. Strength = materiality * magnitude * persistence * horizon.",
+    "formula": "materiality * magnitude * persistence * horizon",
+    "materiality_by_rank": { "ge_90": 4, "ge_75": 3, "ge_50": 2, "lt_50": 1 },
+    "magnitude": {
+      "growth_pp": { "ge_15": 4, "ge_10": 3, "ge_5": 2, "lt_5": 1 },
+      "position_pp": { "ge_2.0": 4, "ge_1.0": 3, "ge_0.5": 2, "lt_0.5": 1 }
+    },
+    "persistence_by_consistent_periods": { "ge_3": 3, "eq_2": 2, "eq_1": 1 },
+    "horizon_by_period_type": { "MAT": 4, "YTD": 3, "RollQ": 2, "Month": 1 },
+    "bands": { "critical": ">=96", "high": ">=48", "moderate": ">=16", "low": "<16" }
+  }
+}

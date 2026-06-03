@@ -858,8 +858,8 @@ body.dark-theme .metric-card p { color: #999; }
       </div>
       <div class="framework-content">
         <div class="framework-block">
-          <h3>🪜 The Five-Rung Ladder</h3>
-          <p>Each rung adds <em>exactly one</em> thing to the rung below.</p>
+          <h3>🧭 From Metric to Insight</h3>
+          <p>Five tiers — each adds <em>exactly one</em> thing to the tier below.</p>
           <ul>
             <li><strong>Metric</strong> — a number</li>
             <li><strong>Comparative Metric</strong> — …vs a reference</li>
@@ -896,7 +896,7 @@ body.dark-theme .metric-card p { color: #999; }
           <p>The <strong>same comparative metric watched over time</strong> — its own trajectory. Nothing more.</p>
           <p style="margin-top:6px"><em>"MAT Sales Growth is −10% now — but last month it was −30%, and 6 months ago −40%."</em></p>
           <p>The signal: things aren't as bad as the −10% looks in isolation — they're <strong>recovering</strong>. The signal definition ends here.</p>
-          <ul><li>Stored shape: rank_trend_3m, growth-of-growth (growth_pp_mshare_dev)</li></ul>
+          <p><strong>Derived, not stored.</strong> The table is already a time series, so a signal is a <strong>window function</strong> (<code>LAG/OVER</code>) over an existing column — params: <em>metric · period_type · LAG(n) · read-out</em>. No precompute; <code>rank_trend_3m</code> &amp; <code>growth_pp_*</code> are just cached hot signals.</p>
         </div>
 
         <div class="framework-block">
@@ -928,6 +928,27 @@ body.dark-theme .metric-card p { color: #999; }
           <p style="margin-top:8px"><code>python3 compute_metrics.py</code><br>
           <code>python3 generate_report.py</code><br>
           See <code>ANALYSIS_FRAMEWORK.md</code></p>
+        </div>
+
+        <div class="framework-block">
+          <h3>🗄️ Storage · Three Stores</h3>
+          <ul>
+            <li><strong>region_metrics</strong> (SQL) — metrics + comparative metrics, the source of truth (T1–2)</li>
+            <li><strong>Knowledge Definitions</strong> — <em>definitions</em>, not values (T3–5)</li>
+            <li><strong>Finding catalog</strong> — composed facts + JSON provenance (T4); <strong>append-only, immutable history</strong></li>
+          </ul>
+          <p>No separate signal store: signal <em>values</em> regenerate from region_metrics; JSON lives only <strong>inside a Finding</strong> as the snapshot of the signals that produced it. Findings never expire — a changed reality is a new finding, anchored to its data snapshot.</p>
+        </div>
+
+        <div class="framework-block">
+          <h3>📚 Knowledge Definitions</h3>
+          <p>Curated library of <strong>definitions, not values</strong> — what's worth looking at and how to read it.</p>
+          <ul>
+            <li><strong>Signal templates</strong> — named bindings of the four params + interpretation</li>
+            <li><strong>Finding recipes</strong> — rules / clustering / prompts that compose signals</li>
+            <li><strong>Insight framings</strong> — per-persona surface / phrase / suppress rules</li>
+          </ul>
+          <p>Analyst-authored, version-controlled, auditable. Stores the <em>how</em> — update metrics once, every entry re-derives. Hot entries get cached as columns for speed.</p>
         </div>
       </div>
     </div>

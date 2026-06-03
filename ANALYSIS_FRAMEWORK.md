@@ -72,9 +72,15 @@ open http://localhost:8765/schema.html
 │
 ├── Python Scripts:
 │   ├── compute_metrics.py
-│   │   └─ Generates region_metrics table + all Tier 1 metrics
-│   └── generate_report.py
-│       └─ Creates problem_report.html with volume-weighted scoring
+│   │   └─ Generates region_metrics table + all Tier 1-2 metrics
+│   ├── generate_report.py
+│   │   └─ Creates problem_report.html with volume-weighted scoring
+│   └── knowledge.py
+│       └─ Loads/validates Knowledge Definitions; compiles signals to SQL
+│
+├── Knowledge Definitions:
+│   └── knowledge_definitions.json
+│       └─ Signal templates · finding recipes · insight framings · relevance (Tiers 3-5 "how")
 │
 ├── HTML Reports:
 │   ├── schema.html
@@ -90,9 +96,9 @@ open http://localhost:8765/schema.html
 
 ---
 
-## Data Flow Overview: The Five-Rung Ladder
+## Data Flow Overview: From Metric to Insight
 
-Each rung adds **exactly one** thing to the rung below:
+Each tier adds **exactly one** thing to the tier below:
 
 **Metric** (a number) → **Comparative Metric** (…vs a reference) → **Signal** (…watched over time) → **Finding** (…composed with other facts) → **Insight** (…who it matters to & why).
 
@@ -202,7 +208,7 @@ A **single value at one point in time** — a Sum or a level, with no comparison
 | `sales_eur` | Total sales value | €125,000 |
 | `market_share` | Brand % of franchise market | 45.2% |
 
-**The test:** "Is MAT Sales −10%?" No — MAT Sales is just €4.2M. A bare metric can't be "−10%"; that already implies a comparison, which is the next rung.
+**The test:** "Is MAT Sales −10%?" No — MAT Sales is just €4.2M. A bare metric can't be "−10%"; that already implies a comparison, which is the next tier.
 
 ---
 
@@ -268,6 +274,43 @@ Two stored columns are signals by construction — a comparison's own change ove
 
 Most signals, though, are read on demand by laying a comparative metric out across `period_type` history.
 
+### Signals Are Derived, Not Stored
+
+The `region_metrics` table is **already a time series** — for every (region, brand, period_type) there are 25 consecutive monthly rows. The full history of every comparative metric is therefore already sitting in adjacent rows. A Signal is not new data to store; it is a **window read** over a column that already exists, via SQL window functions (`LAG` / `LEAD` / `OVER`).
+
+This means we do **not** precompute signals as columns. Doing so would be a combinatorial explosion (≈8 comparative metrics × 4 period_types × ~12 lookbacks × {raw, delta} ≈ thousands of columns) and would still hard-code which lookbacks an analyst wants. The two signal-shaped columns that *do* exist (`rank_trend_3m`, `growth_pp_*`) are not a modeling decision — they are a **cache** of the two most-used signals.
+
+A Signal is fully described by four parameters:
+
+| Parameter | Maps to | Example |
+|-----------|---------|---------|
+| which comparative metric | a column | `mshare_deviation` |
+| aggregation window | `period_type` | MAT vs RollQ |
+| how far back to step | `LAG(n)` | −1M, −2M, −3M |
+| what to read out | raw lag, or a delta | `now − LAG(3)` |
+
+**The two axes are orthogonal:** `period_type` is the *window width* (MAT = 12-month, RollQ = 3-month), and `LAG(n)` is the *step back in time*. "mshare_deviation on RollQ −3Month" = `LAG(3)` within `period_type='RollQ'`. Because the series is monthly-grained, `n` is always counted in calendar-month rows regardless of period_type — that uniformity is what lets one template cover every signal.
+
+#### The Signal Template (the "magic method")
+
+A single parameterized window query generates any signal — the example the analyst runs for Option-1-style custom signals:
+
+```sql
+-- mshare_deviation on MAT: Now, −1M, −2M, plus a 3-month delta
+SELECT year_month,
+       mshare_deviation                          AS now,
+       LAG(mshare_deviation, 1) OVER w           AS m1,
+       LAG(mshare_deviation, 2) OVER w           AS m2,
+       mshare_deviation - LAG(mshare_deviation, 3) OVER w AS delta_3m
+FROM region_metrics
+WHERE brand_name = :brand
+  AND period_type = :period          -- the aggregation window
+  AND region_name = :region
+WINDOW w AS (ORDER BY year_month);   -- LAG(n) = the step back
+```
+
+Sensible defaults (Now and −1M for every comparative metric) fall out for free as the most common parameter binding — never stored, just generated. Materialize a signal as a column **only** for performance, when one is queried so often that the window scan over 136K rows becomes a bottleneck. That is a caching decision, not a modeling one — and it is exactly the justification behind `rank_trend_3m` today.
+
 ### Signal Structure (vs-peer variant)
 
 A common, useful framing tracks the comparative metric as a **gap to peer median** and watches that gap move:
@@ -294,7 +337,7 @@ Status: 🚀 Exceptionally strong and accelerating
 
 ### Relevance (Cross-cutting Filter — NOT part of the Signal definition)
 
-Strength is **not a tier and not what makes something a Signal**. It's a filter applied *across* the ladder to decide which signals are worth composing into Findings, and which Findings are worth surfacing as Insights. A signal is still a signal whether it's strong or noise — strength just gates attention. It depends on:
+Strength is **not a tier and not what makes something a Signal**. It's a filter applied *across* the tiers to decide which signals are worth composing into Findings, and which Findings are worth surfacing as Insights. A signal is still a signal whether it's strong or noise — strength just gates attention. It depends on:
 
 #### Dimension 1: Materiality (Region Size/Rank)
 ```
@@ -411,7 +454,7 @@ A Finding is an **open-ended composition of any lower-tier facts** — simple me
 
 > "Sales Growth is recovering (−40 → −30 → −10) **AND** competition is vanishing **AND** the region is now meeting forecast."
 
-Each clause above is a lower-rung fact; the Finding is the useful combination of them. This is where you may bring in whatever machinery helps — IF/THEN rules, KNN, clustering, classification, LLM synthesis — **or nothing at all**: a Finding can simply be a bundle of signals if you have no better way to compose them. It is a **structured fact, not yet narrative for a user**, stored in a catalog and later recontextualized as Insights.
+Each clause above is a lower-tier fact; the Finding is the useful combination of them. This is where you may bring in whatever machinery helps — IF/THEN rules, KNN, clustering, classification, LLM synthesis — **or nothing at all**: a Finding can simply be a bundle of signals if you have no better way to compose them. It is a **structured fact, not yet narrative for a user**, stored in a catalog and later recontextualized as Insights.
 
 The methods below are *options* for composing Findings, not requirements.
 
@@ -594,11 +637,35 @@ Do you need to capture nuance and business context?
 
 ---
 
-## Finding Catalog Storage
+## Storage Architecture: Three Stores
 
-### The "Book of Facts"
+The framework persists in exactly three places. Tiers 1–2 are the source of truth; Tiers 3–5 are derived, and only *some* of what's derived is worth persisting.
 
-Once generated (via any method), Findings are stored in a **structured catalog**. This is the single source of truth for all findings.
+| Store | Holds | Tiers | Lifecycle |
+|-------|-------|-------|-----------|
+| **`region_metrics`** (SQL) | metrics + comparative metrics | 1–2 | refreshed each period by `compute_metrics.py` — the single source of truth |
+| **Knowledge Definitions** | *definitions*: signal templates, finding recipes, insight framings | the "how" for 3–5 | curated by analysts, version-controlled |
+| **Finding catalog** ("book of facts") | composed findings, each embedding a JSON snapshot of the signals + values that produced it | 4 | generated on demand or scheduled |
+
+### Do we collect Signals as JSON in a separate store, alongside Findings?
+
+**No separate signal store of *values*.** Signal values regenerate from `region_metrics` on demand — the same one-source-of-truth rule that stops us precomputing signal columns. JSON appears in exactly one place: **inside a Finding**, as a provenance snapshot of the signals and metric values that composed it. A Finding is therefore self-explaining — you can read *why* it fired without re-running the queries — while you never maintain a parallel signal table that could drift from the metric table.
+
+To be precise about where each thing lives:
+
+- **Signal *definitions*** (the four parameters + interpretation) → Knowledge Definitions.
+- **Signal *values*** → transient in query results; durable only as JSON embedded in the Findings they fed.
+- **Findings** → the catalog (with that JSON provenance).
+- **Insights** (Tier 5) → generated per persona at read time; optionally cached, never a source of truth.
+
+### The Finding Catalog (the "Book of Facts")
+
+Once generated (via any method), Findings are stored in a **structured catalog** — the durable record of Tier-4 facts. Each finding embeds the JSON snapshot described above, so it carries its own evidence.
+
+**The catalog is append-only, immutable history.** A Finding is never expired, edited, or deleted — it is a record of *what was true and material at the moment it was produced*. A region that was "Deteriorating" in 2026-03 stays "Deteriorating in 2026-03" forever, even after it recovers; the recovery is simply a *new* Finding in a later period. Two consequences:
+
+- Each Finding is **anchored to the data snapshot it was computed from** (`year_month` + a `data_version` stamp), so it is always reproducible and self-consistent — "produced how it mattered then."
+- Because the catalog accumulates over time, **the Findings themselves form a time series** — and can become inputs to higher-order analysis ("this region has produced a Deteriorating finding four periods running"). A Finding is a fact; a sequence of Findings is, itself, a signal.
 
 ### Finding Schema
 
@@ -625,19 +692,21 @@ Finding {
   confidence: float (0-1)  // If from ML model
   materiality: float  // Region importance (rank-based)
   
-  -- What changed
+  -- What changed (provenance snapshot — the evidence, as JSON)
   metric_names: [string]  // Which metrics triggered this
   current_values: {metric: value}
   previous_values: {metric: value}
   delta: {metric: change}
+  signals: [{ metric, period_type, lag, readout, value }]  // the Tier-3 signals that fed this finding
   
   -- Why (no context)
   description: string  // Factual, no user context
   generation_method: enum {rule, knn, clustering, classification, llm}
   
-  -- Metadata
-  created_at: timestamp
-  expires_at: timestamp?  // If temporary
+  -- Metadata (immutable; append-only history)
+  created_at: timestamp     // when this row was written
+  data_version: string      // the region_metrics snapshot it was computed from — anchors it to "then"
+  // no expiry, no updates: a Finding is never edited or deleted; a changed reality is a NEW Finding
 }
 ```
 
@@ -661,13 +730,58 @@ CREATE TABLE findings (
   metric_names TEXT,  -- JSON
   current_values TEXT,  -- JSON
   previous_values TEXT,  -- JSON
+  signals TEXT,  -- JSON: the Tier-3 signals (params + values) that produced this finding
   created_at TIMESTAMP,
+  data_version TEXT,  -- region_metrics snapshot this finding was rooted in (append-only; never updated)
   FOREIGN KEY (region_name, year_month) REFERENCES region_metrics
 );
+-- Append-only: INSERT only. No UPDATE/DELETE — a changed reality produces a new row.
 
 CREATE INDEX idx_findings_region_time ON findings(region_name, year_month);
 CREATE INDEX idx_findings_type ON findings(type, strength);
 CREATE INDEX idx_findings_brand ON findings(brand_name, year_month);
+```
+
+---
+
+## Knowledge Definitions
+
+The **Knowledge Definitions** store is the curated library of **definitions, not values** — the institutional memory of *what the organization has learned is worth looking at, and how to read it.* It stores the *how* of Tiers 3–5; the *what* is always re-derived from `region_metrics`.
+
+It is a concrete, version-controlled artifact in the repo:
+
+- **`knowledge_definitions.json`** — the store itself (signal templates, finding recipes, insight framings, relevance weights).
+- **`knowledge.py`** — loads + validates it against the live `region_metrics` schema, and compiles any signal template to its `LAG`/`OVER` SQL. Run `python3 knowledge.py` for a summary + validation, or `python3 knowledge.py --signal <id>` to see the SQL a template produces.
+
+### Three Kinds of Entries
+
+1. **Signal templates** — a named binding of the four signal parameters (`metric`, `period_type`, `lags`, `readout`) plus an interpretation of what the trajectory *means*. Example: `mshare_dev_mat_trend_3m` = "is our relative market-share position widening or closing over the last quarter, on a 12-month base?" Each compiles to a window query on demand.
+2. **Finding recipes** — the rules / compositions / clustering configs / model prompts that combine signals (and other facts) into a Finding archetype. Method-agnostic: an IF/THEN rule and an LLM prompt are both just entries here. Each declares the signal templates it `requires_signals`.
+3. **Insight framings** — per-persona rules for *what to surface, how to phrase it, and when to stay silent* (e.g. CEO sees only problem regions). Encoded as `surface_when` / `suppress_when` predicates.
+
+### Properties
+
+- **Authored by analysts.** An Option-1 custom SQL signal isn't bespoke throwaway code — it becomes a saved, named entry here, reusable by everyone.
+- **Version-controlled and auditable.** It is "how we analyze," reviewable like source code. You can diff it, roll it back, and see who added which rule and why.
+- **Stores the *how*, never the *what*.** Every entry regenerates fresh values whenever the data refreshes. Update the metric table once → every signal, finding, and insight re-derives. No duplicated data to fall out of sync.
+- **Grows over time.** Sensible defaults seed it (Now + −1M for each comparative metric); analysts add custom signals and recipes; the most valuable get promoted, and the hottest get cached as columns in `region_metrics` purely for performance.
+
+### How the Stores Connect
+
+```
+Knowledge Definitions (definitions: templates · recipes · framings)
+        │  applied to
+        ▼
+region_metrics (source of truth — Tiers 1-2)
+        │  window functions →
+        ▼
+Signals (Tier 3 — transient, regenerated)
+        │  composed by recipes →
+        ▼
+Finding catalog (Tier 4 — persisted, with JSON provenance of its signals)
+        │  framed per persona →
+        ▼
+Insights (Tier 5 — per persona at read time, or silence)
 ```
 
 ---
@@ -722,13 +836,43 @@ The region is *improving*, so it never enters the CEO's "most problematic" view.
 
 ---
 
+## Design: Mapping Business Context to Findings
+
+> Status: agreed design direction, not yet implemented. Captured here so the build doesn't re-litigate it.
+
+**The question.** A context-free Finding ("region X is Deteriorating, 2026-03") has to become a per-persona Insight. Where does the business context — *who cares, what matters this month, who owns what* — get applied?
+
+**The rejected option: bake context metadata into the Finding.** Tempting (it makes the LLM's job easy), but wrong on two axes:
+
+- **Wrong *time*.** A Finding is written when the data refreshes; context ("who's asking," "this month's priorities") is a property of *read time*. Baking it in freezes a read-time decision into a write-time record — and since the catalog is append-only immutable history, that frozen context can never be corrected, only rot.
+- **Wrong *cardinality*.** One Finding × N personas × shifting priorities is a cross product. Storing N lenses inside the 1 fact is an inversion: the Finding is the fact, the framings are the lenses. Keep them separate.
+
+**The design: a three-layer split.**
+
+1. **Findings Catalogue stays strictly context-free** (as specified above) — *what is true*, never *who cares*. This is exactly why it's safe to keep forever: facts anchored to their data snapshot don't rot the way opinions do.
+2. **The mapping lives in Knowledge Definitions** — the `insight_framings` (`surface_when` / `suppress_when` / phrasing), evaluated **at read time** against the Finding's structured fields. When priorities change you edit a *definition* (version-controlled, diffable), never re-tag millions of stored facts. The CEO's "only deteriorating + critical + high-materiality" rule is one line that re-decides every Finding on every read.
+3. **The LLM sits *on top of* the deterministic filter, not in place of it.** Selection is cheap, high-volume, and must be consistent and auditable → that's the `surface_when` predicates. Synthesis and phrasing of the few survivors → that's the LLM. So the LLM only ever runs on Findings that already passed a transparent gate: cheap, consistent, and you can always answer "why did the CEO see this / not that" without asking a model.
+
+```
+Finding (context-free fact, immutable)
+   → insight_framing.surface_when?  ── no ─→ silence        [deterministic · auditable · cheap]
+                                    └─ yes ↓
+   → LLM renders it in the persona's voice, grounded in the JSON provenance   [expensive · survivors only]
+```
+
+**The one genuinely dynamic input** — *this month's priorities, which territories a rep owns, what was already escalated last cycle* — belongs in neither the Finding nor the static framing. It is a thin **read-time context object** passed in as the third argument alongside `Finding` + `framing`. Ephemeral by nature; never persisted into the fact.
+
+**Net:** Findings Catalogue = append-only, context-free, provenance-carrying facts · routing = deterministic predicates in Knowledge Definitions · LLM = phrasing layer on survivors only · live priorities = a thin read-time context object, never stored.
+
+---
+
 ## Key Principles
 
-### 1. Each Rung Adds Exactly One Thing
+### 1. Each Tier Adds Exactly One Thing
 
-Metric (a number) → Comparative Metric (vs a reference) → Signal (watched over time) → Finding (composed with other facts) → Insight (who & why it matters). Don't collapse rungs: a growth % is *not* a signal until you watch it move; a signal is *not* a finding until you combine it with something.
+Metric (a number) → Comparative Metric (vs a reference) → Signal (watched over time) → Finding (composed with other facts) → Insight (who & why it matters). Don't collapse tiers: a growth % is *not* a signal until you watch it move; a signal is *not* a finding until you combine it with something.
 
-### 2. Relevance Is a Filter, Not a Rung
+### 2. Relevance Is a Filter, Not a Tier
 
 Strength = Materiality × Magnitude × Persistence × Horizon gates *which* signals and findings deserve attention. A −4% slide in a top-10% region over 3 quarters beats a −40% blip in a tiny region for one month. Materiality + Persistence >> Magnitude.
 
