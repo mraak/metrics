@@ -752,6 +752,24 @@ body.dark-theme table.sig th.has-def:hover { color: #6ab4d8; text-decoration-col
 table.sig th.sortable { cursor: pointer; user-select: none; }
 table.sig th.sorted { color: #2266aa; }
 body.dark-theme table.sig th.sorted { color: #6ab4d8; }
+
+/* intrinsic (the signal) vs extrinsic (business context) column groups */
+table.sig .col-intrinsic { background: #f4f8fc; }
+table.sig .col-extrinsic { background: #fbf5ec; }
+table.sig .grp-start { border-left: 2px solid #e2e8ef; }
+table.sig tr.group-row th {
+  position: static; font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .6px; text-align: center; padding: 5px 10px; color: #888;
+  border-bottom: 1px solid #eee;
+}
+table.sig th.grp-intrinsic { background: #e9f1f9; color: #2266aa; border-left: 2px solid #e2e8ef; }
+table.sig th.grp-extrinsic { background: #f7ecdb; color: #aa6a11; border-left: 2px solid #e2e8ef; }
+body.dark-theme table.sig .col-intrinsic { background: rgba(106,180,216,0.06); }
+body.dark-theme table.sig .col-extrinsic { background: rgba(245,166,35,0.06); }
+body.dark-theme table.sig .grp-start { border-left-color: #283042; }
+body.dark-theme table.sig tr.group-row th { color: #777; border-bottom-color: #1a1f2e; }
+body.dark-theme table.sig th.grp-intrinsic { background: rgba(106,180,216,0.14); color: #6ab4d8; border-left-color: #283042; }
+body.dark-theme table.sig th.grp-extrinsic { background: rgba(245,166,35,0.14); color: #e0a050; border-left-color: #283042; }
 table.sig td.num { text-align: right; font-family: 'Menlo', monospace; }
 table.sig tr:hover td { background: #f6f9ff; }
 body.dark-theme table.sig tr:hover td { background: #0e1828; }
@@ -1396,21 +1414,22 @@ function renderSignals() {
   const dlKeys = Object.keys(sigData.rows[0].readout);
   const dCol = k => {
     const lbl = 'Δ' + k.replace('delta_', '').replace('m', 'M');
-    return { label: lbl, def: headerDef(lbl), num: true, key: r => r.readout[k], cell: r => signed(r.readout[k]) };
+    return { label: lbl, def: headerDef(lbl), num: true, group: 'intrinsic', key: r => r.readout[k], cell: r => signed(r.readout[k]) };
   };
   sigCols = [
-    { label: 'Region', def: SIG_DEFS['Region'], type: 'str', key: r => r.region, cell: r => r.region },
-    { label: 'Trajectory (oldest→now)', def: SIG_DEFS['Trajectory (oldest→now)'], key: r => r.now, cell: r => `<span class="spark">${fmtSeries(r.series)}</span>` },
+    { label: 'Region', def: SIG_DEFS['Region'], type: 'str', group: 'id', key: r => r.region, cell: r => r.region },
+    { label: 'Trajectory (oldest→now)', def: SIG_DEFS['Trajectory (oldest→now)'], group: 'intrinsic', key: r => r.now, cell: r => `<span class="spark">${fmtSeries(r.series)}</span>` },
     ...dlKeys.map(dCol),
-    { label: 'V', def: SIG_DEFS['V'], num: true, key: r => r.strength.magnitude, cell: r => r.strength.magnitude.toFixed(2) },
-    { label: 'net', def: SIG_DEFS['net'], num: true, key: r => r.strength.net, cell: r => signed(r.strength.net) },
-    { label: 'ρ', def: SIG_DEFS['ρ'], num: true, key: r => r.strength.coherence, cell: r => signed(r.strength.coherence) },
-    { label: 'shape', def: SIG_DEFS['shape'], key: r => SHAPE_ORDER[r.strength.shape] ?? -1, cell: r => `<span class="pill shape-${r.strength.shape}">${r.strength.shape}</span>` },
-    { label: 'rank', def: SIG_DEFS['rank'], num: true, key: r => r.mat_rank, cell: r => r.mat_rank },
-    { label: 'relevance', def: SIG_DEFS['relevance'], num: true, key: r => r.relevance.score, cell: r => `<span class="rel-${r.relevance.band}">${r.relevance.band} (${r.relevance.score})</span>` },
+    { label: 'V', def: SIG_DEFS['V'], num: true, group: 'intrinsic', key: r => r.strength.magnitude, cell: r => r.strength.magnitude.toFixed(2) },
+    { label: 'net', def: SIG_DEFS['net'], num: true, group: 'intrinsic', key: r => r.strength.net, cell: r => signed(r.strength.net) },
+    { label: 'ρ', def: SIG_DEFS['ρ'], num: true, group: 'intrinsic', key: r => r.strength.coherence, cell: r => signed(r.strength.coherence) },
+    { label: 'shape', def: SIG_DEFS['shape'], group: 'intrinsic', key: r => SHAPE_ORDER[r.strength.shape] ?? -1, cell: r => `<span class="pill shape-${r.strength.shape}">${r.strength.shape}</span>` },
+    { label: 'rank', def: SIG_DEFS['rank'], num: true, group: 'extrinsic', key: r => r.mat_rank, cell: r => r.mat_rank },
+    { label: 'relevance', def: SIG_DEFS['relevance'], num: true, group: 'extrinsic', key: r => r.relevance.score, cell: r => `<span class="rel-${r.relevance.band}">${r.relevance.band} (${r.relevance.score})</span>` },
   ];
   if (sortState.idx === null || sortState.idx >= sigCols.length)
     sortState.idx = sigCols.findIndex(c => c.label === 'relevance');
+  sigCols.forEach((c, i) => { c.start = i > 0 && sigCols[i - 1].group !== c.group; });
 
   const col = sigCols[sortState.idx];
   const sorted = [...sigData.rows].sort((a, b) => {
@@ -1419,14 +1438,25 @@ function renderSignals() {
     return sortState.dir * cmp || (b.mat_rank - a.mat_rank);
   });
 
-  const thead = sigCols.map((c, i) => {
+  // grouped header row: intrinsic (the signal) vs extrinsic (business context)
+  const GLABEL = { id: '', intrinsic: 'Signal — intrinsic (loud &amp; clean?)', extrinsic: 'Relevance — extrinsic (does it matter?)' };
+  const groups = [];
+  sigCols.forEach(c => {
+    const last = groups[groups.length - 1];
+    if (last && last.group === c.group) last.span++;
+    else groups.push({ group: c.group, span: 1 });
+  });
+  const grpRow = groups.map(g => `<th class="grp grp-${g.group}" colspan="${g.span}">${GLABEL[g.group]}</th>`).join('');
+
+  const thRow = sigCols.map((c, i) => {
     const active = i === sortState.idx;
     const arrow = active ? (sortState.dir < 0 ? ' ▼' : ' ▲') : '';
-    return `<th class="has-def sortable${active ? ' sorted' : ''}" title="${c.def}" onclick="sortBy(${i})">${c.label}${arrow}</th>`;
+    const cls = `has-def sortable col-${c.group}${c.start ? ' grp-start' : ''}${active ? ' sorted' : ''}`;
+    return `<th class="${cls}" title="${c.def}" onclick="sortBy(${i})">${c.label}${arrow}</th>`;
   }).join('');
-  const body = sorted.map(r => '<tr>' +
-    sigCols.map(c => `<td${c.num ? ' class="num"' : ''}>${c.cell(r)}</td>`).join('') + '</tr>').join('');
-  out.innerHTML = `<table class="sig"><thead><tr>${thead}</tr></thead><tbody>${body}</tbody></table>`;
+  const body = sorted.map(r => '<tr>' + sigCols.map(c =>
+    `<td class="col-${c.group}${c.start ? ' grp-start' : ''}${c.num ? ' num' : ''}">${c.cell(r)}</td>`).join('') + '</tr>').join('');
+  out.innerHTML = `<table class="sig"><thead><tr class="group-row">${grpRow}</tr><tr>${thRow}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function sortBy(i) {
