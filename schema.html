@@ -470,6 +470,40 @@ body.dark-theme .modal-close:hover { background: #1e2232; color: #fff; }
   padding: 13px 15px;
   font-size: 12px;
   line-height: 1.6;
+  transition: box-shadow 0.2s, border-left-color 0.2s;
+}
+
+.metric-card.highlight {
+  border-left-color: #e67e00;
+  box-shadow: 0 0 0 3px rgba(230, 126, 0, 0.2);
+}
+
+body.dark-theme .metric-card.highlight {
+  border-left-color: #f5a623;
+  box-shadow: 0 0 0 3px rgba(245, 166, 35, 0.2);
+}
+
+/* clickable metric rows in diagram */
+.table-row.metric-link {
+  cursor: pointer;
+}
+
+.table-row.metric-link:hover {
+  background: #f0f6ff;
+}
+
+.table-row.metric-link:hover .col-name {
+  color: #2266aa;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+
+body.dark-theme .table-row.metric-link:hover {
+  background: #0e1828;
+}
+
+body.dark-theme .table-row.metric-link:hover .col-name {
+  color: #6ab4d8;
 }
 
 body.dark-theme .metric-card {
@@ -641,29 +675,29 @@ body.dark-theme .metric-card p { color: #999; }
             <div class="row-section">Volume</div>
             <div class="table-row"><span class="col-name">units</span><span class="col-type">REAL</span></div>
             <div class="table-row"><span class="col-name">sales_eur</span><span class="col-type">REAL</span></div>
-            <div class="table-row"><span class="col-name">market_share</span><span class="col-type">%</span></div>
-            <div class="table-row"><span class="col-name">mshare_deviation</span><span class="col-type">pp</span></div>
+            <div class="table-row metric-link" onclick="openMetric('market_share')"><span class="col-name">market_share</span><span class="col-type">%</span></div>
+            <div class="table-row metric-link" onclick="openMetric('mshare_deviation')"><span class="col-name">mshare_deviation</span><span class="col-type">pp</span></div>
             <div class="row-section">Growth</div>
-            <div class="table-row"><span class="col-name">growth_py_sales</span><span class="col-type">%</span></div>
-            <div class="table-row"><span class="col-name">growth_pp_sales</span><span class="col-type">%</span></div>
-            <div class="table-row"><span class="col-name">growth_py_units</span><span class="col-type">%</span></div>
-            <div class="table-row"><span class="col-name">growth_pp_units</span><span class="col-type">%</span></div>
-            <div class="table-row"><span class="col-name">growth_py_mshare_dev</span><span class="col-type">pp</span></div>
-            <div class="table-row"><span class="col-name">growth_pp_mshare_dev</span><span class="col-type">pp</span></div>
-            <div class="table-row"><span class="col-name">growth_vs_fcst_eur</span><span class="col-type">pp</span></div>
-            <div class="table-row"><span class="col-name">growth_vs_fcst_units</span><span class="col-type">pp</span></div>
+            <div class="table-row metric-link" onclick="openMetric('growth_py_sales')"><span class="col-name">growth_py_sales</span><span class="col-type">%</span></div>
+            <div class="table-row metric-link" onclick="openMetric('growth_pp_sales')"><span class="col-name">growth_pp_sales</span><span class="col-type">%</span></div>
+            <div class="table-row metric-link" onclick="openMetric('growth_py_units')"><span class="col-name">growth_py_units</span><span class="col-type">%</span></div>
+            <div class="table-row metric-link" onclick="openMetric('growth_pp_units')"><span class="col-name">growth_pp_units</span><span class="col-type">%</span></div>
+            <div class="table-row metric-link" onclick="openMetric('growth_py_mshare_dev')"><span class="col-name">growth_py_mshare_dev</span><span class="col-type">pp</span></div>
+            <div class="table-row metric-link" onclick="openMetric('growth_pp_mshare_dev')"><span class="col-name">growth_pp_mshare_dev</span><span class="col-type">pp</span></div>
+            <div class="table-row metric-link" onclick="openMetric('growth_vs_fcst_eur')"><span class="col-name">growth_vs_fcst_eur</span><span class="col-type">pp</span></div>
+            <div class="table-row metric-link" onclick="openMetric('growth_vs_fcst_units')"><span class="col-name">growth_vs_fcst_units</span><span class="col-type">pp</span></div>
             <div class="row-section">Ranks — NTILE(100), 100 = best</div>
-            <div class="table-row"><span class="col-name">rank_units</span><span class="col-type">1–100</span></div>
-            <div class="table-row"><span class="col-name">rank_sales_eur</span><span class="col-type">1–100</span></div>
-            <div class="table-row"><span class="col-name">rank_mshare_dev</span><span class="col-type">1–100</span></div>
-            <div class="table-row"><span class="col-name">rank_growth_py</span><span class="col-type">1–100</span></div>
-            <div class="table-row"><span class="col-name">rank_growth_pp</span><span class="col-type">1–100</span></div>
-            <div class="table-row"><span class="col-name">rank_growth_py_mshare_dev</span><span class="col-type">1–100</span></div>
-            <div class="table-row"><span class="col-name">rank_growth_pp_mshare_dev</span><span class="col-type">1–100</span></div>
-            <div class="table-row"><span class="col-name">rank_growth_vs_fcst_eur</span><span class="col-type">1–100</span></div>
-            <div class="table-row"><span class="col-name">rank_growth_vs_fcst_units</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_units')"><span class="col-name">rank_units</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_sales_eur')"><span class="col-name">rank_sales_eur</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_mshare_dev')"><span class="col-name">rank_mshare_dev</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_growth_py')"><span class="col-name">rank_growth_py</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_growth_pp')"><span class="col-name">rank_growth_pp</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_growth_py_mshare_dev')"><span class="col-name">rank_growth_py_mshare_dev</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_growth_pp_mshare_dev')"><span class="col-name">rank_growth_pp_mshare_dev</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_growth_vs_fcst_eur')"><span class="col-name">rank_growth_vs_fcst_eur</span><span class="col-type">1–100</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_growth_vs_fcst_units')"><span class="col-name">rank_growth_vs_fcst_units</span><span class="col-type">1–100</span></div>
             <div class="row-section">Rank History</div>
-            <div class="table-row"><span class="col-name">rank_trend_3m</span><span class="col-type">Δ rank</span></div>
+            <div class="table-row metric-link" onclick="openMetric('rank_trend_3m')"><span class="col-name">rank_trend_3m</span><span class="col-type">Δ rank</span></div>
           </div>
           <div class="row-count">136,200 rows · 25mo × 4 periods × 6 brands × 227 regions</div>
         </div>
@@ -753,121 +787,121 @@ body.dark-theme .metric-card p { color: #999; }
     </div>
     <div class="metrics-modal-body">
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="market_share" id="metric-market_share">
         <h4>Market Share</h4>
         <div class="formula">market_share = (own_sales / total_franchise_sales) × 100%</div>
         <p>Region's brand sales as percentage of total franchise market (own + competitors). Range: typically 0–60% depending on franchise &amp; region size.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="mshare_deviation" id="metric-mshare_deviation">
         <h4>Market Share Deviation</h4>
         <div class="formula">mshare_deviation = market_share − national_avg_market_share</div>
         <p>Signed deviation from national average. +0.5pp = outperforming; −2.6pp = underperforming. Better lens than absolute market share for regional comparison.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="growth_py_sales" id="metric-growth_py_sales">
         <h4>Growth PY Sales</h4>
         <div class="formula">growth_py_sales = ((current_sales − prior_year_sales) / prior_year_sales) × 100%</div>
         <p>Year-over-year growth rate on sales. Computed per period type (Month, RollQ, YTD, MAT). Positive = growth; negative = decline.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="growth_pp_sales" id="metric-growth_pp_sales">
         <h4>Growth PP Sales</h4>
         <div class="formula">growth_pp_sales = ((current_sales − prior_period_sales) / prior_period_sales) × 100%</div>
         <p>Sequential growth in sales vs prior period. Shift size depends on period type: Month→1, RollQ→3, YTD→12, MAT→1.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="growth_py_units" id="metric-growth_py_units">
         <h4>Growth PY Units</h4>
         <div class="formula">growth_py_units = ((current_units − prior_year_units) / prior_year_units) × 100%</div>
         <p>Year-over-year growth rate on units. Mirrors growth_py_sales but tracks volume instead of value. Useful for volume-driven analysis.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="growth_pp_units" id="metric-growth_pp_units">
         <h4>Growth PP Units</h4>
         <div class="formula">growth_pp_units = ((current_units − prior_period_units) / prior_period_units) × 100%</div>
         <p>Sequential growth in units vs prior period. Tracks period-on-period volume changes independent of pricing.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="growth_py_mshare_dev" id="metric-growth_py_mshare_dev">
         <h4>Growth PY Market Share Deviation</h4>
         <div class="formula">growth_py_mshare_dev = mshare_deviation[current] − mshare_deviation[prior_year]</div>
         <p>Year-over-year change in market share deviation. Positive = improving relative position; negative = losing relative ground. Measured in percentage points.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="growth_pp_mshare_dev" id="metric-growth_pp_mshare_dev">
         <h4>Growth PP Market Share Deviation</h4>
         <div class="formula">growth_pp_mshare_dev = mshare_deviation[current] − mshare_deviation[prior_period]</div>
         <p>Period-over-period change in market share deviation. Isolates recent momentum in relative market position. Measured in percentage points.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="growth_vs_fcst_eur" id="metric-growth_vs_fcst_eur">
         <h4>Growth vs Forecast EUR</h4>
         <div class="formula">growth_vs_fcst_eur = growth_py_sales − national_brand_fcst_growth_py</div>
         <p>Actual YoY sales growth minus national forecast growth (pp). Positive = beat forecast. For declining products, −5% actual vs −10% forecast = +5pp advantage.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="growth_vs_fcst_units" id="metric-growth_vs_fcst_units">
         <h4>Growth vs Forecast Units</h4>
         <div class="formula">growth_vs_fcst_units = growth_py_units − national_brand_fcst_growth_py_units</div>
         <p>Actual YoY units growth minus national forecast units growth (pp). Parallel to growth_vs_fcst_eur but measures volume vs value performance.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_units" id="metric-rank_units">
         <h4>Rank Units</h4>
         <div class="formula">rank_units = NTILE(100) of units within (year_month, period_type, brand)</div>
         <p>Percentile rank 1–100 of unit volume per period. 100 = highest unit volume region. Complements rank_sales_eur for volume-based analysis.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_sales_eur" id="metric-rank_sales_eur">
         <h4>Rank Sales EUR</h4>
         <div class="formula">rank_sales_eur = NTILE(100) of sales_eur within (year_month, period_type, brand)</div>
         <p>Percentile rank 1–100 per period. 100 = highest-value region for that brand. Recomputed per period_type — rank can shift between Month, RollQ, MAT views.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_mshare_dev" id="metric-rank_mshare_dev">
         <h4>Rank Market Share Deviation</h4>
         <div class="formula">rank_mshare_dev = NTILE(100) of mshare_deviation within (year_month, period_type, brand)</div>
         <p>Percentile rank of market share deviation from national average. 100 = highest relative market share; 1 = lowest relative market share.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_growth_py" id="metric-rank_growth_py">
         <h4>Rank Growth PY</h4>
         <div class="formula">rank_growth_py = NTILE(100) of growth_py_sales within (year_month, period_type, brand)</div>
         <p>Percentile rank of year-over-year growth. 100 = highest growth region; 1 = lowest / most negative growth.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_growth_pp" id="metric-rank_growth_pp">
         <h4>Rank Growth PP</h4>
         <div class="formula">rank_growth_pp = NTILE(100) of growth_pp_sales within (year_month, period_type, brand)</div>
         <p>Percentile rank of period-on-period growth. 100 = best sequential growth; 1 = worst sequential growth.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_growth_py_mshare_dev" id="metric-rank_growth_py_mshare_dev">
         <h4>Rank Growth PY Market Share Deviation</h4>
         <div class="formula">rank_growth_py_mshare_dev = NTILE(100) of growth_py_mshare_dev within (year_month, period_type, brand)</div>
         <p>Percentile rank of YoY market share deviation change. 100 = strongest improvement in relative position; 1 = greatest loss.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_growth_pp_mshare_dev" id="metric-rank_growth_pp_mshare_dev">
         <h4>Rank Growth PP Market Share Deviation</h4>
         <div class="formula">rank_growth_pp_mshare_dev = NTILE(100) of growth_pp_mshare_dev within (year_month, period_type, brand)</div>
         <p>Percentile rank of period-over-period market share deviation change. Highlights regions with recent positive or negative momentum in relative position.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_growth_vs_fcst_eur" id="metric-rank_growth_vs_fcst_eur">
         <h4>Rank Growth vs Forecast EUR</h4>
         <div class="formula">rank_growth_vs_fcst_eur = NTILE(100) of growth_vs_fcst_eur within (year_month, period_type, brand)</div>
         <p>Percentile rank of sales growth vs forecast delta. 100 = beat forecast most; 1 = most below forecast. For declining products, beating forecast still deserves a high rank.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_growth_vs_fcst_units" id="metric-rank_growth_vs_fcst_units">
         <h4>Rank Growth vs Forecast Units</h4>
         <div class="formula">rank_growth_vs_fcst_units = NTILE(100) of growth_vs_fcst_units within (year_month, period_type, brand)</div>
         <p>Percentile rank of units growth vs forecast delta. Parallel to rank_growth_vs_fcst_eur but measures volume performance vs forecast.</p>
       </div>
 
-      <div class="metric-card">
+      <div class="metric-card" data-metric="rank_trend_3m" id="metric-rank_trend_3m">
         <h4>Rank Trend 3M</h4>
         <div class="formula">rank_trend_3m = rank_sales_eur[t] − rank_sales_eur[t−3]</div>
         <p>Change in volume rank over 3 periods. Positive = improving; negative = declining. Isolates recent momentum independent of absolute volume.</p>
@@ -878,6 +912,17 @@ body.dark-theme .metric-card p { color: #999; }
 </div><!-- /metrics-modal -->
 
 <script>
+function openMetric(id) {
+  // Open modal
+  document.getElementById('metrics-modal').classList.add('open');
+  // Scroll to card and highlight it
+  const card = document.getElementById('metric-' + id);
+  if (!card) return;
+  card.scrollIntoView({ block: 'center' });
+  card.classList.add('highlight');
+  setTimeout(() => card.classList.remove('highlight'), 1800);
+}
+
 function toggleFramework() {
   const fw = document.getElementById('framework-section');
   fw.classList.toggle('open');
