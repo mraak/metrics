@@ -23,21 +23,21 @@ python3 compute_metrics.py
 
 **Creates:** `metrics.db` with 136,200 computed metrics (25 months × 6 brands × 227 regions × 4 period types)
 
-### 2. Generate Problem Report
+### 2. Validate the Knowledge Definitions
 
 ```bash
-python3 generate_report.py
+python3 knowledge.py
 ```
 
-**Creates:** `problem_report.html` (franchise-tabbed report identifying problematic regions)
+**Checks:** signal templates map to real columns, recipes reference defined signals; compiles signals to SQL.
 
-### 3. View the Schema
+### 3. Open the App
 
 ```bash
 open http://localhost:8765/schema.html
 ```
 
-**Features:** Interactive 3-column diagram, metric definitions, light/dark theme, expandable framework
+**`schema.html` is the reporting surface** — currently the schema diagram, metrics reference, and framework panel; reporting tabs are being built on top of it as a web app.
 
 ---
 
@@ -59,16 +59,13 @@ metrics.db (SQLite Database)
 
 Python
 ├── compute_metrics.py  → Generates region_metrics table
-├── generate_report.py  → Creates problem_report.html
 └── knowledge.py        → Loads/validates Knowledge Definitions, compiles signals to SQL
 
 Knowledge Definitions
 └── knowledge_definitions.json → Signal templates · finding recipes · insight framings · relevance
 
-HTML Reports
-├── schema.html         → Database diagram + metrics + framework
-├── problem_report.html → Problem regions by franchise/territory
-└── signals_findings.html → Example signals & findings
+Web App
+└── schema.html         → Reporting surface (schema diagram + metrics + framework; tabs WIP)
 
 Documentation
 └── ANALYSIS_FRAMEWORK.md → Complete system (811 lines)
@@ -288,19 +285,17 @@ It is **authored by analysts** (an Option-1 custom SQL signal becomes a saved, n
 
 ---
 
-## 🔗 Interactive Reports
+## 🔗 The App — `schema.html`
 
-### schema.html
-- 3-column diagram: Dimensions | Facts | Metrics
+The single web-app surface. Today:
+- 3-column schema diagram: Dimensions | Facts | Metrics
 - Clickable metric definitions (formulas + plain English)
 - Light 💡 / Dark 🌙 theme toggle
-- Expandable Framework section with all tiers
+- Expandable Framework panel (all five tiers + strength/relevance + stores)
 
-### problem_report.html
-- Franchise tabs (one per brand)
-- Territory summaries (2-3 bolded sentences per region)
-- Volume-weighted scoring (rank-based importance)
-- Tags: whale_declining, long_slide, sudden_drop, missing_plan
+Reporting (signals, findings, insights per persona) is being rebuilt here as
+tabs from scratch. Earlier standalone report attempts live on the
+`archive/report-attempts` branch.
 
 ---
 

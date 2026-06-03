@@ -22,32 +22,30 @@ python3 compute_metrics.py
 
 **Output:** `metrics.db` ready for analysis
 
-### 2. Generate Reports
+### 2. Validate the Knowledge Definitions
 
 ```bash
-python3 generate_report.py
+python3 knowledge.py                                  # summary + validation
+python3 knowledge.py --signal mshare_dev_mat_step_1m_3m   # compile a signal to SQL
 ```
 
 **What it does:**
-- Reads `metrics.db`
-- Applies volume weighting to identify problematic regions
-- Generates `problem_report.html` with franchise-tabbed interface
-- Shows regions with: whales declining, long slides, sudden drops, missing forecasts
+- Loads `knowledge_definitions.json` (signal templates, finding recipes, insight framings, relevance/strength config)
+- Validates it against the live `region_metrics` schema and compiles any signal template to its `LAG`/`OVER` SQL
 
-**Output:** `problem_report.html` (open in browser)
-
-### 3. View the Schema
+### 3. Open the App
 
 ```bash
 # Server already running on port 8765
 open http://localhost:8765/schema.html
 ```
 
-**Features:**
+**`schema.html` is the reporting surface** (a web app in progress):
 - Interactive 3-column diagram: Dimensions | Facts | Computed Metrics
 - Clickable metric definitions with formulas
 - Light/dark theme toggle
-- Expandable Analysis Framework section
+- Expandable Analysis Framework panel
+- Reporting tabs (signals / findings / insights) being built on top — from scratch
 
 ---
 
@@ -73,8 +71,6 @@ open http://localhost:8765/schema.html
 ├── Python Scripts:
 │   ├── compute_metrics.py
 │   │   └─ Generates region_metrics table + all Tier 1-2 metrics
-│   ├── generate_report.py
-│   │   └─ Creates problem_report.html with volume-weighted scoring
 │   └── knowledge.py
 │       └─ Loads/validates Knowledge Definitions; compiles signals to SQL
 │
@@ -82,13 +78,11 @@ open http://localhost:8765/schema.html
 │   └── knowledge_definitions.json
 │       └─ Signal templates · finding recipes · insight framings · relevance (Tiers 3-5 "how")
 │
-├── HTML Reports:
-│   ├── schema.html
-│   │   └─ Interactive database diagram + metrics reference + framework
-│   ├── problem_report.html
-│   │   └─ Franchise-level report with problem regions
-│   └── signals_findings.html
-│       └─ Example signals & findings (reference)
+├── Web App:
+│   └── schema.html
+│       └─ Reporting surface — schema diagram + metrics + framework panel;
+│          reporting tabs (signals/findings/insights) being built on top
+│       (earlier standalone report attempts: branch archive/report-attempts)
 │
 └── Data Model Grain (region_metrics):
     25 months × 4 period_types × 6 brands × 227 regions = 136,200 rows

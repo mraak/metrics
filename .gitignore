@@ -3,11 +3,6 @@
 *.sqlite
 *.sqlite3
 
-# Generated HTML reports (run generate_report.py to recreate)
-problem_report.html
-problem_regions.html
-signals_findings.html
-
 # Backups
 *.backup
 *.bak
