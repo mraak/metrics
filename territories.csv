@@ -1,0 +1,228 @@
+Name,Territory_ID,Territory_Name
+GE Genève 1201,T01,Genève
+GE Genève 1203,T01,Genève
+GE Genève 1202/1209,T01,Genève
+GE Genève 1207,T01,Genève
+GE Genève 1204,T01,Genève
+GE Genève 1205,T01,Genève
+GE Genève 1206,T01,Genève
+GE Genève 1208,T01,Genève
+GE Collonge,T01,Genève
+GE Chêne-Bougeries,T01,Genève
+GE Veyrier,T01,Genève
+GE Carouge,T01,Genève
+GE Onex,T01,Genève
+GE Plan-les-Ouates,T01,Genève
+GE Bernex,T01,Genève
+GE Meyrin,T01,Genève
+GE Le Grand-Saconnex,T01,Genève
+VD Lausanne 1006,T02,Vaud-Léman
+VD Lausanne 1007,T02,Vaud-Léman
+VD Lausanne 1003,T02,Vaud-Léman
+VD Lausanne 1004,T02,Vaud-Léman
+VD Lausanne 1005/11,T02,Vaud-Léman
+VD Lausanne 1018,T02,Vaud-Léman
+VD Lausanne 1010/12,T02,Vaud-Léman
+VD Coppet,T02,Vaud-Léman
+VD Nyon,T02,Vaud-Léman
+VD Gland,T02,Vaud-Léman
+VD Rolle,T02,Vaud-Léman
+VD Morges,T02,Vaud-Léman
+VD Crissier,T02,Vaud-Léman
+VD Chavannes-près-Renens,T02,Vaud-Léman
+VD Renens,T02,Vaud-Léman
+VD Prilly,T02,Vaud-Léman
+VD Lutry,T02,Vaud-Léman
+VD Pully,T02,Vaud-Léman
+VD Cossonay,T03,Vaud-Nord
+VD Vallorbe,T03,Vaud-Nord
+VD Grandson,T03,Vaud-Nord
+VD Yverdon,T03,Vaud-Nord
+VD Orbe,T03,Vaud-Nord
+VD Estavayer-le-Lac,T03,Vaud-Nord
+VD Payerne,T03,Vaud-Nord
+VD Echallens,T03,Vaud-Nord
+VD Moudon,T03,Vaud-Nord
+VD Chexbres,T03,Vaud-Nord
+VD Vevey,T03,Vaud-Nord
+VD Clarens,T03,Vaud-Nord
+VD Montreux,T03,Vaud-Nord
+VD Villeneuve,T03,Vaud-Nord
+VD Aigle,T03,Vaud-Nord
+VS St-Maurice,T04,Valais
+VS Monthey,T04,Valais
+VS Martigny,T04,Valais
+VS Orsieres,T04,Valais
+VS Saxon,T04,Valais
+VS Fully,T04,Valais
+VS Conthey,T04,Valais
+VS Sion,T04,Valais
+VS Grone,T04,Valais
+VS Montana,T04,Valais
+VS Sierre,T04,Valais
+VS Visp,T04,Valais
+VS Zermatt,T04,Valais
+VS Brig,T04,Valais
+VS Fiesch,T04,Valais
+FR Bulle,T05,Arc Jurassien
+FR Gruyères,T05,Arc Jurassien
+FR Romont,T05,Arc Jurassien
+FR Marly,T05,Arc Jurassien
+FR Fribourg,T05,Arc Jurassien
+FR Belfaux,T05,Arc Jurassien
+FR Düdingen,T05,Arc Jurassien
+FR Murten,T05,Arc Jurassien
+NE Neuchâtel,T05,Arc Jurassien
+NE Boudry,T05,Arc Jurassien
+NE Fleurier,T05,Arc Jurassien
+NE Le Locle,T05,Arc Jurassien
+NE La Chaux-de-Fonds,T05,Arc Jurassien
+NE Peseux,T05,Arc Jurassien
+NE St-Blaise,T05,Arc Jurassien
+JU Saignelegier,T05,Arc Jurassien
+JU Porrentruy,T05,Arc Jurassien
+JU Delémont,T05,Arc Jurassien
+BE Bern 3011,T06,Bern
+BE Bern 3005/07,T06,Bern
+BE Bern 3006/15,T06,Bern
+BE Bern 3004/13/14,T06,Bern
+BE Bern 3008/10/12,T06,Bern
+BE Bern 3018/19/20/27,T06,Bern
+BE Köniz,T06,Bern
+BE Belp,T06,Bern
+BE Thun,T06,Bern
+BE Spiez,T06,Bern
+BE Interlaken,T06,Bern
+BE Steffisburg,T06,Bern
+BE Münsingen,T06,Bern
+BE Langnau i E,T06,Bern
+BE Ostermundigen,T06,Bern
+BE Zollikofen,T06,Bern
+BE Burgdorf,T06,Bern
+BE Herzogenbuchsee,T06,Bern
+BE Langenthal,T06,Bern
+BE Lyss,T06,Bern
+BE Ins,T06,Bern
+BE Biel 2501/03/04,T06,Bern
+BE Biel 2502/05,T06,Bern
+BE Moutier,T06,Bern
+BE St-Imier,T06,Bern
+BS Basel 4001/51,T07,Nordwestschweiz
+BS Basel 4031/56,T07,Nordwestschweiz
+BS Basel 4055,T07,Nordwestschweiz
+BS Basel 4054,T07,Nordwestschweiz
+BS Basel 4053/59,T07,Nordwestschweiz
+BS Basel 4052,T07,Nordwestschweiz
+BS Basel 4058,T07,Nordwestschweiz
+BS Basel 4057,T07,Nordwestschweiz
+BS Riehen,T07,Nordwestschweiz
+BL Allschwil,T07,Nordwestschweiz
+BL Binningen,T07,Nordwestschweiz
+BL Laufen,T07,Nordwestschweiz
+BL Reinach,T07,Nordwestschweiz
+BL Muttenz,T07,Nordwestschweiz
+BL Sissach,T07,Nordwestschweiz
+SO Solothurn,T07,Nordwestschweiz
+SO Grenchen,T07,Nordwestschweiz
+SO Oensingen,T07,Nordwestschweiz
+SO Olten,T07,Nordwestschweiz
+SH Schaffhausen,T07,Nordwestschweiz
+ZH Zürich 8001,T08,Zürich-Stadt
+ZH Zürich 8002/38/41/45,T08,Zürich-Stadt
+ZH Zürich 8047/55/63,T08,Zürich-Stadt
+ZH Zürich 8003,T08,Zürich-Stadt
+ZH Zürich 8004,T08,Zürich-Stadt
+ZH Zürich 8005/48/64,T08,Zürich-Stadt
+ZH Zürich 8037/49,T08,Zürich-Stadt
+ZH Zürich 8046/52,T08,Zürich-Stadt
+ZH Zürich 8050,T08,Zürich-Stadt
+ZH Zürich 8051/57,T08,Zürich-Stadt
+ZH Zürich 8006/44,T08,Zürich-Stadt
+ZH Zürich 8032,T08,Zürich-Stadt
+ZH Zürich 8008/53,T08,Zürich-Stadt
+ZH Wädenswil,T08,Zürich-Stadt
+ZH Thalwil,T08,Zürich-Stadt
+ZH Adliswil,T08,Zürich-Stadt
+ZH Dietikon,T09,Zürich-Region
+ZH Dielsdorf,T09,Zürich-Region
+ZH Bülach,T09,Zürich-Region
+ZH Andelfingen,T09,Zürich-Region
+ZH Winterthur Stadel,T09,Zürich-Region
+ZH Winterthur,T09,Zürich-Region
+ZH Wetzikon,T09,Zürich-Region
+ZH Effretikon,T09,Zürich-Region
+ZH Kloten,T09,Zürich-Region
+ZH Wallisellen,T09,Zürich-Region
+ZH Dübendorf,T09,Zürich-Region
+ZH Uster,T09,Zürich-Region
+ZH Küsnacht,T09,Zürich-Region
+ZH Meilen,T09,Zürich-Region
+ZH Rüti,T09,Zürich-Region
+TI Chiasso,T10,Ticino
+TI Balerna,T10,Ticino
+TI Coldrerio,T10,Ticino
+TI Mendrisio,T10,Ticino
+TI Melide,T10,Ticino
+TI Viganello,T10,Ticino
+TI Lugano,T10,Ticino
+TI Breganzona,T10,Ticino
+TI Agno,T10,Ticino
+TI Gravesano,T10,Ticino
+TI Canobbio,T10,Ticino
+TI Bironico,T10,Ticino
+TI Cadenazzo,T10,Ticino
+TI Brissago,T10,Ticino
+TI Ascona,T10,Ticino
+TI Locarno,T10,Ticino
+TI Minusio,T10,Ticino
+TI Gordola,T10,Ticino
+TI Bellinzona,T10,Ticino
+TI Arbedo,T10,Ticino
+TI Biasca,T10,Ticino
+TI Faido,T10,Ticino
+AG Aarau,T11,Aargau-Luzern
+AG Suhr,T11,Aargau-Luzern
+AG Oftringen,T11,Aargau-Luzern
+AG Zofingen,T11,Aargau-Luzern
+AG Schöftland,T11,Aargau-Luzern
+AG Lenzburg,T11,Aargau-Luzern
+AG Reinach,T11,Aargau-Luzern
+AG Wohlen,T11,Aargau-Luzern
+AG Muri,T11,Aargau-Luzern
+AG Bremgarten,T11,Aargau-Luzern
+AG Neuenhof,T11,Aargau-Luzern
+AG Baden-Wettingen,T11,Aargau-Luzern
+AG Würenlingen,T11,Aargau-Luzern
+AG Brugg,T11,Aargau-Luzern
+AG Birr,T11,Aargau-Luzern
+AG Rupperswil,T11,Aargau-Luzern
+AG Zurzach,T11,Aargau-Luzern
+AG Frick,T11,Aargau-Luzern
+AG Rheinfelden,T11,Aargau-Luzern
+LU Luzern 6004,T11,Aargau-Luzern
+LU Luzern 6003,T11,Aargau-Luzern
+LU Kriens,T11,Aargau-Luzern
+LU Sursee,T11,Aargau-Luzern
+LU Hochdorf,T11,Aargau-Luzern
+SG St.Gallen,T12,Ostschweiz
+SG Rorschach,T12,Ostschweiz
+SG Gossau,T12,Ostschweiz
+SG Wil,T12,Ostschweiz
+SG GL Rapperswil-Glarus,T12,Ostschweiz
+SG Sargans,T12,Ostschweiz
+SG Altstätten,T12,Ostschweiz
+TG Frauenfeld,T12,Ostschweiz
+TG Kreuzlingen,T12,Ostschweiz
+TG Romanshorn,T12,Ostschweiz
+TG Münchwilen,T12,Ostschweiz
+GR Chur,T12,Ostschweiz
+GR Ilanz,T12,Ostschweiz
+GR Landquart,T12,Ostschweiz
+GR Davos,T12,Ostschweiz
+GR St.Moritz,T12,Ostschweiz
+ZG Zug,T12,Ostschweiz
+ZG Baar,T12,Ostschweiz
+SZ Schwyz,T12,Ostschweiz
+SZ Pfäffikon,T12,Ostschweiz
+OW-NW-UR,T12,Ostschweiz
+AR Appenzell,T12,Ostschweiz

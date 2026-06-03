@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>metrics.db — Schema Diagram</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Light theme (default) ── */
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  background: #f5f7fa;
+  color: #1a1a1a;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Dark theme ── */
+body.dark-theme {
+  background: #0d0f14;
+  color: #d4d4d4;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 14px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fff;
+}
+
+body.dark-theme .header {
+  background: #0a0d12;
+  border-bottom-color: #1e2232;
+}
+
+h1 {
+  font-size: 17px;
+  font-weight: 700;
+  color: #111;
+}
+
+body.dark-theme h1 {
+  color: #fff;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #888;
+}
+
+.header-spacer { margin-left: auto; }
+
+.btn {
+  background: #fff;
+  border: 1px solid #ccc;
+  color: #555;
+  padding: 6px 13px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.btn:hover {
+  background: #f0f0f0;
+  border-color: #999;
+  color: #222;
+}
+
+body.dark-theme .btn {
+  background: #1a1f2e;
+  border-color: #444;
+  color: #aaa;
+}
+
+body.dark-theme .btn:hover {
+  background: #252b3a;
+  border-color: #666;
+  color: #fff;
+}
+
+/* ── Main layout ── */
+.main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── Diagram (scrollable) ── */
+.diagram-section {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  padding: 20px;
+  background: #f5f7fa;
+}
+
+body.dark-theme .diagram-section {
+  background: #0a0d12;
+}
+
+.canvas {
+  display: grid;
+  grid-template-columns: 200px 1px 200px 1px 1fr;
+  gap: 0;
+  min-width: 700px;
+}
+
+.divider {
+  background: #ddd;
+  margin: 0 12px;
+  align-self: stretch;
+}
+
+body.dark-theme .divider {
+  background: #1e2232;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.col-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #999;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 4px;
+}
+
+body.dark-theme .col-label {
+  color: #666;
+  border-bottom-color: #1e2232;
+}
+
+/* ── Table cards ── */
+.table {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 7px;
+  overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+body.dark-theme .table {
+  background: #0f1119;
+  border-color: #1e2232;
+  box-shadow: none;
+}
+
+.table-header {
+  background: #f8f9fa;
+  padding: 9px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+body.dark-theme .table-header {
+  background: #1a1f2e;
+  color: #bbb;
+  border-bottom-color: #1e2232;
+}
+
+.badge {
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  background: #e8e8e8;
+  color: #888;
+}
+
+body.dark-theme .badge {
+  background: #2a2f3f;
+  color: #666;
+}
+
+.badge.dim  { background: #ddeeff; color: #2266aa; }
+.badge.fact { background: #ddfff0; color: #227755; }
+.badge.comp { background: #eeeeFF; color: #6655cc; }
+
+body.dark-theme .badge.dim  { background: #162040; color: #6ab4d8; }
+body.dark-theme .badge.fact { background: #162510; color: #8ec85a; }
+body.dark-theme .badge.comp { background: #250f40; color: #b48af0; }
+
+.table-rows {
+  font-size: 11px;
+}
+
+.table-row {
+  padding: 5px 14px;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+body.dark-theme .table-row {
+  border-top-color: #181b27;
+}
+
+.table-row:first-child { border-top: none; }
+
+.row-section {
+  padding: 4px 14px 2px;
+  border-top: 1px solid #f0f0f0;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: #bbb;
+  background: #fafafa;
+}
+
+body.dark-theme .row-section {
+  border-top-color: #181b27;
+  color: #555;
+  background: #0d0f14;
+}
+
+.col-name {
+  font-family: 'Menlo', 'Consolas', monospace;
+  color: #333;
+  flex: 1;
+}
+
+body.dark-theme .col-name { color: #bbb; }
+
+.col-name.pk { color: #c07000; font-weight: 700; }
+.col-name.fk { color: #2266aa; }
+body.dark-theme .col-name.pk { color: #f5a623; }
+body.dark-theme .col-name.fk { color: #5ba8d0; }
+
+.col-type {
+  font-family: 'Menlo', 'Consolas', monospace;
+  color: #aaa;
+  font-size: 10px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+body.dark-theme .col-type { color: #666; }
+
+.row-count {
+  font-size: 9px;
+  color: #aaa;
+  padding: 6px 14px;
+  border-top: 1px solid #e8e8e8;
+  font-family: 'Menlo', monospace;
+}
+
+body.dark-theme .row-count {
+  color: #555;
+  border-top-color: #1e2232;
+}
+
+/* ── Framework sidebar ── */
+.framework-section {
+  flex: 0 0 0;
+  display: none;
+  flex-direction: column;
+  border-left: 1px solid #e0e0e0;
+  background: #fff;
+  min-height: 0;
+}
+
+body.dark-theme .framework-section {
+  background: #0a0d12;
+  border-left-color: #1e2232;
+}
+
+.framework-section.open {
+  flex: 0 0 360px;
+  display: flex;
+}
+
+.framework-header {
+  flex-shrink: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+body.dark-theme .framework-header {
+  background: #0f1119;
+  border-bottom-color: #1e2232;
+}
+
+.framework-header h2 {
+  font-size: 13px;
+  font-weight: 700;
+  color: #333;
+  margin: 0;
+}
+
+body.dark-theme .framework-header h2 { color: #d4d4d4; }
+
+.framework-toggle {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.framework-content {
+  flex: 1 1 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  font-size: 12px;
+  line-height: 1.65;
+  color: #555;
+}
+
+body.dark-theme .framework-content { color: #999; }
+
+.framework-content h3 {
+  font-size: 12px;
+  font-weight: 700;
+  color: #222;
+  margin: 18px 0 6px 0;
+}
+
+.framework-content h3:first-child { margin-top: 0; }
+body.dark-theme .framework-content h3 { color: #d4d4d4; }
+
+.framework-content ul {
+  margin: 4px 0 4px 16px;
+}
+
+.framework-content li { margin: 3px 0; }
+
+.framework-content strong { color: #333; }
+body.dark-theme .framework-content strong { color: #ccc; }
+
+.framework-content code {
+  background: #f0f0f0;
+  color: #555;
+  padding: 1px 4px;
+  border-radius: 3px;
+  font-family: 'Menlo', monospace;
+  font-size: 10px;
+}
+
+body.dark-theme .framework-content code {
+  background: #1a1f2e;
+  color: #8ec85a;
+}
+
+/* ── Metrics modal ── */
+.metrics-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.metrics-modal.open { display: flex; }
+
+.metrics-modal-box {
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 9px;
+  width: 92vw;
+  max-width: 860px;
+  height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.18);
+}
+
+body.dark-theme .metrics-modal-box {
+  background: #0f1119;
+  border-color: #1e2232;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.7);
+}
+
+.metrics-modal-header {
+  flex-shrink: 0;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e8e8e8;
+  background: #f8f9fa;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+body.dark-theme .metrics-modal-header {
+  background: #0a0d12;
+  border-bottom-color: #1e2232;
+}
+
+.metrics-modal-header h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: #222;
+}
+
+body.dark-theme .metrics-modal-header h2 { color: #d4d4d4; }
+
+.modal-close {
+  background: none;
+  border: none;
+  color: #aaa;
+  font-size: 22px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.modal-close:hover { background: #eee; color: #333; }
+body.dark-theme .modal-close:hover { background: #1e2232; color: #fff; }
+
+.metrics-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.metric-card {
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-left: 3px solid #6ab4d8;
+  border-radius: 6px;
+  padding: 13px 15px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+body.dark-theme .metric-card {
+  background: #0f1119;
+  border-color: #1e2232;
+  border-left-color: #6ab4d8;
+}
+
+.metric-card h4 {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2266aa;
+  margin: 0 0 7px 0;
+}
+
+body.dark-theme .metric-card h4 { color: #6ab4d8; }
+
+.metric-card .formula {
+  background: #f0f5ff;
+  border-left: 2px solid #6ab4d8;
+  border-radius: 3px;
+  padding: 6px 10px;
+  margin: 0 0 8px 0;
+  font-family: 'Menlo', monospace;
+  font-size: 10.5px;
+  color: #2266aa;
+  overflow-x: auto;
+}
+
+body.dark-theme .metric-card .formula {
+  background: #0a1020;
+  color: #6ab4d8;
+  border-left-color: #2a4a6a;
+}
+
+.metric-card p {
+  color: #666;
+  margin: 0;
+}
+
+body.dark-theme .metric-card p { color: #999; }
+
+</style>
+</head>
+<body>
+
+<!-- ── Header ── -->
+<div class="header">
+  <h1>metrics.db — Schema Diagram</h1>
+  <span class="subtitle">Pharma regional analytics · SQLite · 7 tables</span>
+  <div class="header-spacer"></div>
+  <button class="btn" onclick="toggleMetricsModal()">📊 Metrics</button>
+  <button class="btn" onclick="toggleFramework()">📋 Framework</button>
+  <button class="btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
+</div>
+
+<!-- ── Main ── -->
+<div class="main">
+
+  <!-- Diagram -->
+  <div class="diagram-section">
+    <div class="canvas">
+
+      <!-- DIMENSIONS -->
+      <div class="col">
+        <div class="col-label">Dimensions</div>
+
+        <div class="table">
+          <div class="table-header">brands <span class="badge dim">dim</span></div>
+          <div class="table-rows">
+            <div class="table-row"><span class="col-name pk">brand_id</span><span class="col-type">TEXT PK</span></div>
+            <div class="table-row"><span class="col-name">brand_name</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">franchise</span><span class="col-type">TEXT</span></div>
+          </div>
+          <div class="row-count">6 rows · 5 franchises</div>
+        </div>
+
+        <div class="table">
+          <div class="table-header">skus <span class="badge dim">dim</span></div>
+          <div class="table-rows">
+            <div class="table-row"><span class="col-name pk">sku_id</span><span class="col-type">TEXT PK</span></div>
+            <div class="table-row"><span class="col-name fk">brand_id</span><span class="col-type">FK</span></div>
+            <div class="table-row"><span class="col-name">sku_name</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">strength</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">form</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">pack_size</span><span class="col-type">INT</span></div>
+            <div class="table-row"><span class="col-name">list_price_usd</span><span class="col-type">REAL</span></div>
+          </div>
+          <div class="row-count">9 rows · 1–4 SKUs per brand</div>
+        </div>
+
+        <div class="table">
+          <div class="table-header">regions <span class="badge dim">dim</span></div>
+          <div class="table-rows">
+            <div class="table-row"><span class="col-name pk">region_name</span><span class="col-type">TEXT PK</span></div>
+            <div class="table-row"><span class="col-name">territory_id</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">territory_name</span><span class="col-type">TEXT</span></div>
+          </div>
+          <div class="row-count">227 rows · 12 territories</div>
+        </div>
+
+        <div class="table">
+          <div class="table-header">competitors <span class="badge dim">dim</span></div>
+          <div class="table-rows">
+            <div class="table-row"><span class="col-name pk">competitor_id</span><span class="col-type">TEXT PK</span></div>
+            <div class="table-row"><span class="col-name">competitor_name</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">franchise</span><span class="col-type">TEXT</span></div>
+          </div>
+          <div class="row-count">16 rows · 2–4 per franchise</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- FACTS -->
+      <div class="col">
+        <div class="col-label">Facts</div>
+
+        <div class="table">
+          <div class="table-header">sales <span class="badge fact">fact</span></div>
+          <div class="table-rows">
+            <div class="row-section">Temporal</div>
+            <div class="table-row"><span class="col-name fk">year_month</span><span class="col-type">TEXT</span></div>
+            <div class="row-section">Brand / Market</div>
+            <div class="table-row"><span class="col-name fk">brand_name</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name fk">franchise</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">is_own_brand</span><span class="col-type">0/1</span></div>
+            <div class="row-section">Geography</div>
+            <div class="table-row"><span class="col-name fk">region_name</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">territory_id</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">territory_name</span><span class="col-type">TEXT</span></div>
+            <div class="row-section">Measures</div>
+            <div class="table-row"><span class="col-name">units</span><span class="col-type">INT</span></div>
+            <div class="table-row"><span class="col-name">sales_eur</span><span class="col-type">REAL</span></div>
+          </div>
+          <div class="row-count">110,291 rows · 25 months</div>
+        </div>
+
+        <div class="table">
+          <div class="table-header">forecast <span class="badge fact">fact</span></div>
+          <div class="table-rows">
+            <div class="row-section">Composite PK</div>
+            <div class="table-row"><span class="col-name pk">year_month</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name pk fk">sku_id</span><span class="col-type">TEXT</span></div>
+            <div class="row-section">Measures</div>
+            <div class="table-row"><span class="col-name">units</span><span class="col-type">INT</span></div>
+            <div class="table-row"><span class="col-name">sales_eur</span><span class="col-type">REAL</span></div>
+          </div>
+          <div class="row-count">186 rows · national · 25 months</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- COMPUTED METRICS -->
+      <div class="col">
+        <div class="col-label">Computed &amp; Historized Metrics</div>
+
+        <div class="table">
+          <div class="table-header">region_metrics <span class="badge comp">computed</span></div>
+          <div class="table-rows">
+            <div class="row-section">Grain (implicit composite key)</div>
+            <div class="table-row"><span class="col-name fk">year_month</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">period_type</span><span class="col-type">Month·RollQ·YTD·MAT</span></div>
+            <div class="table-row"><span class="col-name fk">brand_name</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name fk">franchise</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name fk">region_name</span><span class="col-type">TEXT</span></div>
+            <div class="table-row"><span class="col-name">territory_id / name</span><span class="col-type">TEXT</span></div>
+            <div class="row-section">Volume</div>
+            <div class="table-row"><span class="col-name">units</span><span class="col-type">REAL</span></div>
+            <div class="table-row"><span class="col-name">sales_eur</span><span class="col-type">REAL</span></div>
+            <div class="table-row"><span class="col-name">market_share</span><span class="col-type">%</span></div>
+            <div class="table-row"><span class="col-name">mshare_deviation</span><span class="col-type">pp</span></div>
+            <div class="row-section">Growth</div>
+            <div class="table-row"><span class="col-name">growth_py_sales</span><span class="col-type">%</span></div>
+            <div class="table-row"><span class="col-name">growth_pp_sales</span><span class="col-type">%</span></div>
+            <div class="table-row"><span class="col-name">growth_py_units</span><span class="col-type">%</span></div>
+            <div class="table-row"><span class="col-name">growth_pp_units</span><span class="col-type">%</span></div>
+            <div class="table-row"><span class="col-name">growth_py_mshare_dev</span><span class="col-type">pp</span></div>
+            <div class="table-row"><span class="col-name">growth_pp_mshare_dev</span><span class="col-type">pp</span></div>
+            <div class="table-row"><span class="col-name">growth_vs_fcst_eur</span><span class="col-type">pp</span></div>
+            <div class="table-row"><span class="col-name">growth_vs_fcst_units</span><span class="col-type">pp</span></div>
+            <div class="row-section">Ranks — NTILE(100), 100 = best</div>
+            <div class="table-row"><span class="col-name">rank_units</span><span class="col-type">1–100</span></div>
+            <div class="table-row"><span class="col-name">rank_sales_eur</span><span class="col-type">1–100</span></div>
+            <div class="table-row"><span class="col-name">rank_mshare_dev</span><span class="col-type">1–100</span></div>
+            <div class="table-row"><span class="col-name">rank_growth_py</span><span class="col-type">1–100</span></div>
+            <div class="table-row"><span class="col-name">rank_growth_pp</span><span class="col-type">1–100</span></div>
+            <div class="table-row"><span class="col-name">rank_growth_py_mshare_dev</span><span class="col-type">1–100</span></div>
+            <div class="table-row"><span class="col-name">rank_growth_pp_mshare_dev</span><span class="col-type">1–100</span></div>
+            <div class="table-row"><span class="col-name">rank_growth_vs_fcst_eur</span><span class="col-type">1–100</span></div>
+            <div class="table-row"><span class="col-name">rank_growth_vs_fcst_units</span><span class="col-type">1–100</span></div>
+            <div class="row-section">Rank History</div>
+            <div class="table-row"><span class="col-name">rank_trend_3m</span><span class="col-type">Δ rank</span></div>
+          </div>
+          <div class="row-count">136,200 rows · 25mo × 4 periods × 6 brands × 227 regions</div>
+        </div>
+      </div>
+
+    </div><!-- /canvas -->
+  </div><!-- /diagram-section -->
+
+  <!-- Framework sidebar -->
+  <div class="framework-section" id="framework-section">
+    <div class="framework-header" onclick="toggleFramework()">
+      <h2>📋 Analysis Framework</h2>
+      <button class="framework-toggle" onclick="event.stopPropagation()">✕</button>
+    </div>
+    <div class="framework-content">
+      <h3>🔄 Three-Tier System</h3>
+      <p><strong>Tier 1 → Tier 2 → Tier 3:</strong> Raw data → Signals &amp; Findings → Context-specific Insights</p>
+
+      <h3>📊 Tier 1: Metrics (Database)</h3>
+      <p>Single source of truth. All pure computations in <code>region_metrics</code>.</p>
+      <ul>
+        <li><strong>Pure:</strong> units, sales_eur, market_share, mshare_deviation</li>
+        <li><strong>Temporal:</strong> growth_py_sales, growth_pp_sales, growth_py_units, growth_pp_units, growth_py_mshare_dev, growth_pp_mshare_dev</li>
+        <li><strong>Peer:</strong> growth_vs_fcst_eur, growth_vs_fcst_units</li>
+        <li><strong>Ranks:</strong> rank_units, rank_sales_eur, rank_mshare_dev, rank_growth_py, rank_growth_pp, rank_growth_py_mshare_dev, rank_growth_pp_mshare_dev, rank_growth_vs_fcst_eur, rank_growth_vs_fcst_units, rank_trend_3m</li>
+      </ul>
+      <p><strong>Period types:</strong> Month · RollQ (3mo) · YTD · MAT (12mo, strongest for trends)</p>
+
+      <h3>📈 Tier 2a: Signal Generation</h3>
+      <p>Single metric + temporal momentum + strength rating.</p>
+      <p><strong>Signal Strength = Materiality × Magnitude × Persistence × TimeHorizon</strong></p>
+      <p>Five generation methods:</p>
+      <ul>
+        <li>IF/THEN Rules — deterministic</li>
+        <li>K-Nearest Neighbors — peer comparison</li>
+        <li>Clustering — behavioral groupings</li>
+        <li>Classification — ML-based</li>
+        <li>LLM Synthesis — AI narrative</li>
+      </ul>
+
+      <h3>💡 Tier 2b: Findings</h3>
+      <p>2+ signals combined → structured fact, stored without user context.</p>
+      <ul>
+        <li><strong>Stars</strong> — Growth ↑↑, Position ↑, Momentum ↑</li>
+        <li><strong>Slowing Giants</strong> — Growth ↑ but gap narrowing</li>
+        <li><strong>Turnarounds</strong> — Was below, now recovering</li>
+        <li><strong>Deteriorating</strong> — Growth ↓, Position ↓, Momentum ↓</li>
+        <li><strong>Riding Wave</strong> — Growth ↑↑ but no market share gain</li>
+        <li><strong>Weak Foundation</strong> — Growth ↑ but position not improving</li>
+        <li><strong>Dangerous Stability</strong> — Growth stable but position ↓</li>
+      </ul>
+
+      <h3>🎯 Tier 3: Insights</h3>
+      <p>Finding + context → actionable insight for a specific person.</p>
+      <ul>
+        <li><strong>WHO:</strong> CEO / Sales VP / Analyst / Finance</li>
+        <li><strong>WHEN:</strong> Real-time / Weekly / Monthly / Quarterly</li>
+        <li><strong>WHAT:</strong> Target tracking / Allocation / Competitive</li>
+        <li><strong>HOW MUCH:</strong> €M revenue / market share % / volume</li>
+        <li><strong>WHY:</strong> Missing targets / Losing battle / Opportunity</li>
+      </ul>
+
+      <h3>✨ Key Principles</h3>
+      <ul>
+        <li>Materiality + Persistence &gt;&gt; Magnitude</li>
+        <li>Findings ≠ LLM-only (rules, stats, ML all work)</li>
+        <li>One source of truth (Tier 1 DB; narratives on-demand)</li>
+        <li>Context changes everything — same finding, different insights</li>
+        <li>Relative analysis — compare to brand median, not absolutes</li>
+      </ul>
+
+      <h3>🚀 How to Run</h3>
+      <p><code>python3 compute_metrics.py</code> → generates region_metrics (136,200 rows)</p>
+      <p><code>python3 generate_report.py</code> → generates problem_report.html</p>
+      <p>See <code>ANALYSIS_FRAMEWORK.md</code> for full documentation.</p>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- ── Metrics Modal ── -->
+<div class="metrics-modal" id="metrics-modal">
+  <div class="metrics-modal-box">
+    <div class="metrics-modal-header">
+      <h2>📊 Computed Metrics · Formulas &amp; Definitions</h2>
+      <button class="modal-close" onclick="toggleMetricsModal()">✕</button>
+    </div>
+    <div class="metrics-modal-body">
+
+      <div class="metric-card">
+        <h4>Market Share</h4>
+        <div class="formula">market_share = (own_sales / total_franchise_sales) × 100%</div>
+        <p>Region's brand sales as percentage of total franchise market (own + competitors). Range: typically 0–60% depending on franchise &amp; region size.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Market Share Deviation</h4>
+        <div class="formula">mshare_deviation = market_share − national_avg_market_share</div>
+        <p>Signed deviation from national average. +0.5pp = outperforming; −2.6pp = underperforming. Better lens than absolute market share for regional comparison.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Growth PY Sales</h4>
+        <div class="formula">growth_py_sales = ((current_sales − prior_year_sales) / prior_year_sales) × 100%</div>
+        <p>Year-over-year growth rate on sales. Computed per period type (Month, RollQ, YTD, MAT). Positive = growth; negative = decline.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Growth PP Sales</h4>
+        <div class="formula">growth_pp_sales = ((current_sales − prior_period_sales) / prior_period_sales) × 100%</div>
+        <p>Sequential growth in sales vs prior period. Shift size depends on period type: Month→1, RollQ→3, YTD→12, MAT→1.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Growth PY Units</h4>
+        <div class="formula">growth_py_units = ((current_units − prior_year_units) / prior_year_units) × 100%</div>
+        <p>Year-over-year growth rate on units. Mirrors growth_py_sales but tracks volume instead of value. Useful for volume-driven analysis.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Growth PP Units</h4>
+        <div class="formula">growth_pp_units = ((current_units − prior_period_units) / prior_period_units) × 100%</div>
+        <p>Sequential growth in units vs prior period. Tracks period-on-period volume changes independent of pricing.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Growth PY Market Share Deviation</h4>
+        <div class="formula">growth_py_mshare_dev = mshare_deviation[current] − mshare_deviation[prior_year]</div>
+        <p>Year-over-year change in market share deviation. Positive = improving relative position; negative = losing relative ground. Measured in percentage points.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Growth PP Market Share Deviation</h4>
+        <div class="formula">growth_pp_mshare_dev = mshare_deviation[current] − mshare_deviation[prior_period]</div>
+        <p>Period-over-period change in market share deviation. Isolates recent momentum in relative market position. Measured in percentage points.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Growth vs Forecast EUR</h4>
+        <div class="formula">growth_vs_fcst_eur = growth_py_sales − national_brand_fcst_growth_py</div>
+        <p>Actual YoY sales growth minus national forecast growth (pp). Positive = beat forecast. For declining products, −5% actual vs −10% forecast = +5pp advantage.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Growth vs Forecast Units</h4>
+        <div class="formula">growth_vs_fcst_units = growth_py_units − national_brand_fcst_growth_py_units</div>
+        <p>Actual YoY units growth minus national forecast units growth (pp). Parallel to growth_vs_fcst_eur but measures volume vs value performance.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Units</h4>
+        <div class="formula">rank_units = NTILE(100) of units within (year_month, period_type, brand)</div>
+        <p>Percentile rank 1–100 of unit volume per period. 100 = highest unit volume region. Complements rank_sales_eur for volume-based analysis.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Sales EUR</h4>
+        <div class="formula">rank_sales_eur = NTILE(100) of sales_eur within (year_month, period_type, brand)</div>
+        <p>Percentile rank 1–100 per period. 100 = highest-value region for that brand. Recomputed per period_type — rank can shift between Month, RollQ, MAT views.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Market Share Deviation</h4>
+        <div class="formula">rank_mshare_dev = NTILE(100) of mshare_deviation within (year_month, period_type, brand)</div>
+        <p>Percentile rank of market share deviation from national average. 100 = highest relative market share; 1 = lowest relative market share.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Growth PY</h4>
+        <div class="formula">rank_growth_py = NTILE(100) of growth_py_sales within (year_month, period_type, brand)</div>
+        <p>Percentile rank of year-over-year growth. 100 = highest growth region; 1 = lowest / most negative growth.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Growth PP</h4>
+        <div class="formula">rank_growth_pp = NTILE(100) of growth_pp_sales within (year_month, period_type, brand)</div>
+        <p>Percentile rank of period-on-period growth. 100 = best sequential growth; 1 = worst sequential growth.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Growth PY Market Share Deviation</h4>
+        <div class="formula">rank_growth_py_mshare_dev = NTILE(100) of growth_py_mshare_dev within (year_month, period_type, brand)</div>
+        <p>Percentile rank of YoY market share deviation change. 100 = strongest improvement in relative position; 1 = greatest loss.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Growth PP Market Share Deviation</h4>
+        <div class="formula">rank_growth_pp_mshare_dev = NTILE(100) of growth_pp_mshare_dev within (year_month, period_type, brand)</div>
+        <p>Percentile rank of period-over-period market share deviation change. Highlights regions with recent positive or negative momentum in relative position.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Growth vs Forecast EUR</h4>
+        <div class="formula">rank_growth_vs_fcst_eur = NTILE(100) of growth_vs_fcst_eur within (year_month, period_type, brand)</div>
+        <p>Percentile rank of sales growth vs forecast delta. 100 = beat forecast most; 1 = most below forecast. For declining products, beating forecast still deserves a high rank.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Growth vs Forecast Units</h4>
+        <div class="formula">rank_growth_vs_fcst_units = NTILE(100) of growth_vs_fcst_units within (year_month, period_type, brand)</div>
+        <p>Percentile rank of units growth vs forecast delta. Parallel to rank_growth_vs_fcst_eur but measures volume performance vs forecast.</p>
+      </div>
+
+      <div class="metric-card">
+        <h4>Rank Trend 3M</h4>
+        <div class="formula">rank_trend_3m = rank_sales_eur[t] − rank_sales_eur[t−3]</div>
+        <p>Change in volume rank over 3 periods. Positive = improving; negative = declining. Isolates recent momentum independent of absolute volume.</p>
+      </div>
+
+    </div><!-- /metrics-modal-body -->
+  </div>
+</div><!-- /metrics-modal -->
+
+<script>
+function toggleFramework() {
+  const fw = document.getElementById('framework-section');
+  fw.classList.toggle('open');
+  localStorage.setItem('fw', fw.classList.contains('open') ? '1' : '0');
+}
+
+function toggleMetricsModal() {
+  document.getElementById('metrics-modal').classList.toggle('open');
+}
+
+function toggleTheme() {
+  const dark = document.body.classList.toggle('dark-theme');
+  document.getElementById('theme-btn').textContent = dark ? '☀️ Light' : '🌙 Dark';
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+}
+
+// Close metrics modal on backdrop click
+document.getElementById('metrics-modal').addEventListener('click', e => {
+  if (e.target.id === 'metrics-modal') toggleMetricsModal();
+});
+
+// Restore preferences
+window.addEventListener('load', () => {
+  if (localStorage.getItem('theme') === 'dark') {
+    document.body.classList.add('dark-theme');
+    document.getElementById('theme-btn').textContent = '☀️ Light';
+  }
+  if (localStorage.getItem('fw') === '1') {
+    document.getElementById('framework-section').classList.add('open');
+  }
+});
+</script>
+</body>
+</html>

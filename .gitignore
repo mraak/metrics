@@ -1,0 +1,48 @@
+# Database (generated — run compute_metrics.py to recreate)
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated HTML reports (run generate_report.py to recreate)
+problem_report.html
+problem_regions.html
+signals_findings.html
+
+# Backups
+*.backup
+*.bak
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Claude Code local config
+.claude/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+/tmp/
+
+# Secrets / env
+.env
+.env.*
+secrets.py
