@@ -82,6 +82,9 @@ def find_findings(brand, asof=None, signal='mshare_dev_mat_step_1m_3m'):
     fcst = {r['region_name']: r['growth_vs_fcst_eur'] for r in con.execute(
         "SELECT region_name, growth_vs_fcst_eur FROM region_metrics "
         "WHERE brand_name=? AND period_type='RollQ' AND year_month=?", (brand, asof))}
+    mshare = {r['region_name']: r['market_share'] for r in con.execute(
+        "SELECT region_name, market_share FROM region_metrics "
+        "WHERE brand_name=? AND period_type='MAT' AND year_month=?", (brand, asof))}
     con.close()
 
     sig = server.api_signals({"brand": [brand], "signal": [signal], "asof": [asof]})
@@ -95,6 +98,7 @@ def find_findings(brand, asof=None, signal='mshare_dev_mat_step_1m_3m'):
             'region': r['region'], 'territory': terr.get(r['region'], '—'),
             'finding': fid, 'label': FINDINGS[fid][0], 'level': level,
             'series': r['series'], 'now': r['now'], 'strength': r['strength'],
+            'market_share': None if mshare.get(r['region']) is None else round(mshare[r['region']], 1),
             'mat_rank': r['mat_rank'],
             'fcst_rollq': None if fc is None else round(fc, 1),
             'fcst_meets': fc is not None and fc >= 0,
