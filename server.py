@@ -125,9 +125,31 @@ def api_signals(params):
             "consistency": _persistence_label(st),
             "relevance": rel,
         })
+    display_sql = knowledge.compile_signal_sql(
+        dict(sig, period_type=period), brand=f"'{brand}'", partition_by_region=True)
     return {"signal": sig_id, "metric": sig["metric"], "period": period,
             "brand": brand, "franchise": franchise, "asof": asof,
-            "interpretation": sig.get("interpretation", ""), "rows": out}
+            "interpretation": sig.get("interpretation", ""),
+            "sql": display_sql, "rows": out}
+
+
+def api_knowledge():
+    """Expose the relevant Knowledge Definitions for the app's 'behind the
+    scenes' views: signal interpretations, finding recipes, insight framings."""
+    defs = knowledge.load()
+    sig = {k: {"metric": v["metric"], "period_type": v["period_type"],
+               "interpretation": v.get("interpretation", "")}
+           for k, v in defs["signal_templates"].items() if not k.startswith("_")}
+    rec = {k: {"label": v.get("label", k), "rule": v.get("rule", ""),
+               "description": v.get("description", ""),
+               "default_action": v.get("default_action", "")}
+           for k, v in defs["finding_recipes"].items() if not k.startswith("_")}
+    frm = {k: {"label": v.get("label", k), "scope": v.get("scope", ""),
+               "cadence": v.get("cadence", ""), "decision": v.get("decision", ""),
+               "surface_when": v.get("surface_when", ""),
+               "suppress_when": v.get("suppress_when", ""), "tone": v.get("tone", "")}
+           for k, v in defs["insight_framings"].items() if not k.startswith("_")}
+    return {"signals": sig, "finding_recipes": rec, "insight_framings": frm}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -155,6 +177,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._send_json(api_meta())
                 if parsed.path == "/api/signals":
                     return self._send_json(api_signals(params))
+                if parsed.path == "/api/knowledge":
+                    return self._send_json(api_knowledge())
                 if parsed.path == "/api/findings":
                     import findings  # lazy: findings.py imports server
                     brand = params.get("brand", ["Oncleris"])[0]

@@ -824,6 +824,28 @@ body.dark-theme .ins-small { color: #888; }
 body.dark-theme .ins-list.ceo li { color: #ccc; }
 .ins-ceo-none { font-size: 13px; color: #555; padding: 10px 0; max-width: 780px; line-height: 1.6; }
 body.dark-theme .ins-ceo-none { color: #aaa; }
+
+/* context lens (per user type) */
+.ins-lens { font-size: 12px; color: #555; background: #f8f9fa; border-left: 3px solid #6ab4d8; border-radius: 4px; padding: 9px 12px; margin-bottom: 14px; line-height: 1.55; max-width: 1000px; }
+body.dark-theme .ins-lens { background: #0f1119; color: #aaa; border-left-color: #2a4a6a; }
+.ins-lens .lens-rule { color: #999; font-size: 11px; font-family: 'Menlo', monospace; }
+body.dark-theme .ins-lens .lens-rule { color: #777; }
+
+/* behind-the-scenes info modal */
+.btn.small { padding: 4px 9px; font-size: 11px; }
+.info-pre { background: #f5f7fa; border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px 14px; font-family: 'Menlo', monospace; font-size: 12px; line-height: 1.5; color: #2266aa; overflow: auto; white-space: pre; }
+body.dark-theme .info-pre { background: #0a1020; border-color: #1e2232; color: #6ab4d8; }
+.info-note { font-size: 12.5px; color: #555; line-height: 1.6; margin: 10px 0; max-width: 860px; }
+body.dark-theme .info-note { color: #aaa; }
+.def-card { border: 1px solid #e0e0e0; border-left: 3px solid #999; border-radius: 6px; padding: 11px 14px; margin-bottom: 10px; max-width: 880px; }
+body.dark-theme .def-card { border-color: #1e2232; }
+.def-card h4 { font-size: 12.5px; margin: 0 0 4px; color: #222; }
+body.dark-theme .def-card h4 { color: #ddd; }
+.def-card .rule { font-family: 'Menlo', monospace; font-size: 11px; color: #666; background: #f5f7fa; padding: 5px 8px; border-radius: 4px; margin: 6px 0; white-space: pre-wrap; }
+body.dark-theme .def-card .rule { background: #1a1f2e; color: #99a; }
+.def-card p { font-size: 12.5px; color: #555; margin: 4px 0 0; line-height: 1.55; }
+body.dark-theme .def-card p { color: #aaa; }
+.def-card .act { font-size: 11.5px; color: #888; margin-top: 5px; }
 table.sig td.num { text-align: right; font-family: 'Menlo', monospace; }
 table.sig tr:hover td { background: #f6f9ff; }
 body.dark-theme table.sig tr:hover td { background: #0e1828; }
@@ -1138,6 +1160,7 @@ body.dark-theme .rel-high { color: #e0a050; }
       <div class="signals-toolbar">
         <span><label>Brand</label><select id="sig-brand" onchange="loadSignals()"></select></span>
         <span><label>Signal</label><select id="sig-signal" onchange="loadSignals()"></select></span>
+        <button class="btn small" onclick="showSignalSQL()">⌗ Query</button>
         <span class="signals-meta" id="sig-meta"></span>
       </div>
       <div class="signals-body">
@@ -1160,6 +1183,7 @@ body.dark-theme .rel-high { color: #e0a050; }
           <option value="good_sudden_drop">Good, sudden drop</option>
           <option value="bad_getting_better">Bad → better</option>
         </select></span>
+        <button class="btn small" onclick="showFindingDefs()">ℹ︎ Definitions</button>
         <span class="signals-meta" id="fnd-meta"></span>
       </div>
       <div class="signals-body">
@@ -1185,6 +1209,7 @@ body.dark-theme .rel-high { color: #e0a050; }
         <span class="signals-meta" id="ins-meta"></span>
       </div>
       <div class="signals-body">
+        <div class="ins-lens" id="ins-lens"></div>
         <div id="ins-summary"></div>
         <div id="ins-results">Loading…</div>
       </div>
@@ -1338,6 +1363,17 @@ body.dark-theme .rel-high { color: #e0a050; }
   </div>
 </div><!-- /metrics-modal -->
 
+<!-- ── Info modal (behind-the-scenes: SQL, definitions) ── -->
+<div class="metrics-modal" id="info-modal">
+  <div class="metrics-modal-box">
+    <div class="metrics-modal-header">
+      <h2 id="info-title">Info</h2>
+      <button class="modal-close" onclick="closeInfo()">✕</button>
+    </div>
+    <div class="metrics-modal-body" id="info-body" style="display:block"></div>
+  </div>
+</div>
+
 <script>
 function openDataModal(tableName) {
   const rows = TABLE_DATA[tableName];
@@ -1408,6 +1444,9 @@ document.getElementById('metrics-modal').addEventListener('click', e => {
 });
 document.getElementById('data-modal').addEventListener('click', e => {
   if (e.target.id === 'data-modal') closeDataModal();
+});
+document.getElementById('info-modal').addEventListener('click', e => {
+  if (e.target.id === 'info-modal') closeInfo();
 });
 
 // Restore preferences
@@ -1570,6 +1609,50 @@ function sortBy(i) {
 /* ── Findings tab ── */
 let findingsInited = false, insightsInited = false, fndData = null, insData = null, insUser = 'manager';
 const findingsCache = {};
+let KN = null;
+async function getKnowledge() {
+  if (KN) return KN;
+  try { KN = await (await fetch('/api/knowledge')).json(); }
+  catch (e) { KN = { signals: {}, finding_recipes: {}, insight_framings: {} }; }
+  return KN;
+}
+function escapeHtml(s) { return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c])); }
+function openInfo(title, html) {
+  document.getElementById('info-title').textContent = title;
+  document.getElementById('info-body').innerHTML = html;
+  document.getElementById('info-modal').classList.add('open');
+}
+function closeInfo() { document.getElementById('info-modal').classList.remove('open'); }
+
+function showSignalSQL() {
+  if (!sigData) return;
+  const html =
+    `<div class="info-note">The Signals table is computed <strong>live</strong> by this window query (<code>LAG/OVER</code> over <code>region_metrics</code>) — no precomputed signal values. Strength (V / net / ρ) and relevance are then derived per row in <code>knowledge.py</code>.</div>` +
+    `<div class="info-pre">${escapeHtml(sigData.sql)}</div>` +
+    `<div class="info-note"><strong>What it means:</strong> ${sigData.interpretation || ''}</div>`;
+  openInfo('Signal query · ' + sigData.signal, html);
+}
+
+async function showFindingDefs() {
+  const kn = await getKnowledge();
+  const ids = ['bad_to_worse', 'bad_not_improving', 'ok_sudden_drop', 'good_sudden_drop', 'bad_getting_better'];
+  const col = { bad_to_worse: '#bb2222', bad_not_improving: '#aa5500', ok_sudden_drop: '#9a7700', good_sudden_drop: '#6a3fb0', bad_getting_better: '#1a8a55' };
+  const cards = ids.map(id => {
+    const r = kn.finding_recipes[id]; if (!r) return '';
+    return `<div class="def-card" style="border-left-color:${col[id]}"><h4>${r.label}</h4><p>${r.description}</p>` +
+           `<div class="rule">${escapeHtml(r.rule)}</div>${r.default_action ? `<div class="act">→ ${r.default_action}</div>` : ''}</div>`;
+  }).join('');
+  openInfo('Finding definitions · market-share × FCST',
+    `<div class="info-note">How each finding is defined. Severity then combines the market-share finding with RollQ forecast attainment (both / either). Source: <code>knowledge_definitions.json</code> → <code>findings.py</code>.</div>${cards}`);
+}
+
+function lensHtml() {
+  if (!KN) return '';
+  const key = { manager: 'sales_manager', rep: 'sales_rep', ceo: 'ceo' }[insUser];
+  const f = KN.insight_framings[key]; if (!f) return '';
+  return `🔭 <strong>${f.label}’s lens</strong> — ${f.scope.replace(/_/g, ' ')}, ${f.cadence.replace(/_/g, ' ')}. ${f.decision}` +
+         `<br><span class="lens-rule">surfaces: ${f.surface_when} · suppresses: ${f.suppress_when}</span>`;
+}
 
 async function ensureMeta(errTarget) {
   if (META) return true;
@@ -1610,6 +1693,7 @@ async function loadFindings() {
 async function initInsights() {
   insightsInited = true;
   if (!await ensureMeta('ins-results')) return;
+  await getKnowledge();
   fillBrands(document.getElementById('ins-brand'));
   loadInsights();
 }
@@ -1713,6 +1797,7 @@ function renderFindings() {
 // ── Insights tab: per-user mini-reports ──
 function renderInsights() {
   if (!insData) return;
+  document.getElementById('ins-lens').innerHTML = lensHtml();
   const sum = document.getElementById('ins-summary'), out = document.getElementById('ins-results');
   if (insUser === 'manager') {
     sum.innerHTML = summaryChips(insData, insData.rows);

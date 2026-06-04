@@ -2,22 +2,47 @@
   "_about": "Knowledge Definitions — the curated library of DEFINITIONS, not values. Stores the 'how' for Tiers 3-5 (Signal, Finding, Insight). Every entry re-derives fresh values from region_metrics whenever the data refreshes; nothing here is a stored result. Analyst-authored, version-controlled, auditable like code. See ANALYSIS_FRAMEWORK.md.",
   "version": "1.0.0",
   "updated": "2026-06-03",
-
   "enums": {
-    "period_type": ["Month", "RollQ", "YTD", "MAT"],
-    "readout": ["series", "delta", "slope"],
-    "direction": ["higher_is_better", "lower_is_better"],
-    "method": ["rule", "clustering", "classification", "llm", "signal_bundle"],
-    "strength_band": ["low", "moderate", "high", "critical"]
+    "period_type": [
+      "Month",
+      "RollQ",
+      "YTD",
+      "MAT"
+    ],
+    "readout": [
+      "series",
+      "delta",
+      "slope"
+    ],
+    "direction": [
+      "higher_is_better",
+      "lower_is_better"
+    ],
+    "method": [
+      "rule",
+      "clustering",
+      "classification",
+      "llm",
+      "signal_bundle"
+    ],
+    "strength_band": [
+      "low",
+      "moderate",
+      "high",
+      "critical"
+    ]
   },
-
   "signal_templates": {
     "_about": "A Signal = a single comparative metric watched over time. Each template binds the four parameters {metric, period_type, lags, readout} to a name + interpretation. Values are produced on demand by a LAG/OVER window query over region_metrics; never precomputed here. 'lags' are calendar-month offsets (0 = now). 'readout': series = the lagged values; delta = value[0] - value[delta_lag]; slope = linear trend across lags.",
-
     "mshare_dev_mat_trend_3m": {
       "metric": "mshare_deviation",
       "period_type": "MAT",
-      "lags": [0, 1, 2, 3],
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
       "readout": "delta",
       "delta_lag": 3,
       "direction": "higher_is_better",
@@ -26,9 +51,17 @@
     "mshare_dev_mat_step_1m_3m": {
       "metric": "mshare_deviation",
       "period_type": "MAT",
-      "lags": [0, 1, 2, 3],
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
       "readout": "delta",
-      "delta_lags": [1, 3],
+      "delta_lags": [
+        1,
+        3
+      ],
       "direction": "higher_is_better",
       "strength_kind": "position",
       "materiality_from": "rank_sales_eur",
@@ -37,7 +70,10 @@
     "mshare_dev_rollq_step3": {
       "metric": "mshare_deviation",
       "period_type": "RollQ",
-      "lags": [0, 3],
+      "lags": [
+        0,
+        3
+      ],
       "readout": "delta",
       "delta_lag": 3,
       "direction": "higher_is_better",
@@ -46,7 +82,13 @@
     "growth_py_sales_mat_momentum": {
       "metric": "growth_py_sales",
       "period_type": "MAT",
-      "lags": [0, 1, 2, 3, 6],
+      "lags": [
+        0,
+        1,
+        2,
+        3,
+        6
+      ],
       "readout": "slope",
       "direction": "higher_is_better",
       "interpretation": "Trajectory of YoY sales growth on a 12-month base. The canonical '-10% now, -30% last month, -40% six months ago -> recovering' read. Positive slope = improving even when the level is still negative."
@@ -54,7 +96,12 @@
     "growth_vs_fcst_eur_rollq_trend": {
       "metric": "growth_vs_fcst_eur",
       "period_type": "RollQ",
-      "lags": [0, 1, 2, 3],
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
       "readout": "delta",
       "delta_lag": 3,
       "direction": "higher_is_better",
@@ -63,7 +110,12 @@
     "growth_py_units_mat_momentum": {
       "metric": "growth_py_units",
       "period_type": "MAT",
-      "lags": [0, 1, 2, 3],
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
       "readout": "slope",
       "direction": "higher_is_better",
       "interpretation": "Volume-side counterpart to growth_py_sales momentum. Diverging unit vs value trajectories flag price/mix effects."
@@ -71,7 +123,10 @@
     "rank_sales_eur_trend_3m": {
       "metric": "rank_sales_eur",
       "period_type": "MAT",
-      "lags": [0, 3],
+      "lags": [
+        0,
+        3
+      ],
       "readout": "delta",
       "delta_lag": 3,
       "direction": "higher_is_better",
@@ -81,21 +136,24 @@
     "mshare_dev_pp_month": {
       "metric": "growth_pp_mshare_dev",
       "period_type": "Month",
-      "lags": [0],
+      "lags": [
+        0
+      ],
       "readout": "series",
       "direction": "higher_is_better",
       "interpretation": "Period-over-period change in market-share deviation. NOTE: a 'growth-of-growth' column — the comparison's own change is already baked into region_metrics, so this template reads a single column rather than lagging.",
       "cached_as": "growth_pp_mshare_dev"
     }
   },
-
   "finding_recipes": {
     "_about": "A Finding = open-ended composition of lower facts (usually several signals). Each recipe is method-agnostic: 'rule' here is a human-readable predicate an engine OR an LLM can evaluate. 'requires_signals' lists the signal templates that feed it; 'gap' refers to value vs brand peer-median, 'momentum' to the signal's direction (WIDENING/STABLE/SHRINKING for growth; IMPROVING/STABLE/DECLINING for position). Thresholds come from relevance.magnitude.",
-
     "star": {
       "label": "Star",
       "method": "rule",
-      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m"],
+      "requires_signals": [
+        "growth_py_sales_mat_momentum",
+        "mshare_dev_mat_trend_3m"
+      ],
       "rule": "growth_gap >= +10pp AND growth_momentum == WIDENING AND position_gap > 0 AND position_momentum == IMPROVING",
       "strength_floor": "high",
       "description": "Exceptional growth, pulling further ahead of peers, gaining market share.",
@@ -104,7 +162,10 @@
     "slowing_giant": {
       "label": "Slowing Giant",
       "method": "rule",
-      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m"],
+      "requires_signals": [
+        "growth_py_sales_mat_momentum",
+        "mshare_dev_mat_trend_3m"
+      ],
       "rule": "growth_gap > 0 AND growth_momentum == SHRINKING AND position_momentum == DECLINING",
       "strength_floor": "moderate",
       "description": "Still above peers but momentum turning negative; execution needs focus.",
@@ -113,7 +174,10 @@
     "turnaround": {
       "label": "Turnaround",
       "method": "rule",
-      "requires_signals": ["mshare_dev_mat_trend_3m", "growth_py_sales_mat_momentum"],
+      "requires_signals": [
+        "mshare_dev_mat_trend_3m",
+        "growth_py_sales_mat_momentum"
+      ],
       "rule": "position_gap < 0 AND position_momentum == IMPROVING AND persistence >= 3_periods",
       "strength_floor": "moderate",
       "description": "Was below/far below median, now recovering on a consistent multi-period trajectory.",
@@ -122,7 +186,11 @@
     "deteriorating": {
       "label": "Deteriorating",
       "method": "rule",
-      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m", "growth_vs_fcst_eur_rollq_trend"],
+      "requires_signals": [
+        "growth_py_sales_mat_momentum",
+        "mshare_dev_mat_trend_3m",
+        "growth_vs_fcst_eur_rollq_trend"
+      ],
       "rule": "growth_gap < 0 AND growth_momentum == SHRINKING AND position_momentum == DECLINING",
       "strength_floor": "high",
       "description": "Dual problem: structural underperformance + worsening trend + likely forecast miss.",
@@ -131,7 +199,10 @@
     "riding_wave": {
       "label": "Riding the Wave",
       "method": "rule",
-      "requires_signals": ["growth_vs_fcst_eur_rollq_trend", "mshare_dev_mat_trend_3m"],
+      "requires_signals": [
+        "growth_vs_fcst_eur_rollq_trend",
+        "mshare_dev_mat_trend_3m"
+      ],
       "rule": "growth_vs_fcst >= +10pp AND position_momentum == STABLE",
       "strength_floor": "moderate",
       "description": "Strong absolute numbers but not outpacing peers; national market booming.",
@@ -140,7 +211,10 @@
     "weak_foundation": {
       "label": "Weak Foundation",
       "method": "rule",
-      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m"],
+      "requires_signals": [
+        "growth_py_sales_mat_momentum",
+        "mshare_dev_mat_trend_3m"
+      ],
       "rule": "growth_gap > 0 AND (position_gap <= -1.0pp OR position_momentum != IMPROVING)",
       "strength_floor": "low",
       "description": "Growing at a healthy rate but not catching up to peers; secondary market.",
@@ -149,7 +223,10 @@
     "dangerous_stability": {
       "label": "Dangerous Stability",
       "method": "rule",
-      "requires_signals": ["growth_py_sales_mat_momentum", "mshare_dev_mat_trend_3m"],
+      "requires_signals": [
+        "growth_py_sales_mat_momentum",
+        "mshare_dev_mat_trend_3m"
+      ],
       "rule": "abs(growth_momentum_delta) < 2pp AND position_momentum == DECLINING",
       "strength_floor": "moderate",
       "description": "No alarm bells in growth but slowly losing market edge to competitors.",
@@ -158,64 +235,78 @@
     "unstable": {
       "label": "Unstable / Erratic",
       "method": "rule",
-      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "requires_signals": [
+        "mshare_dev_mat_step_1m_3m"
+      ],
       "rule": "signal.magnitude >= loud AND abs(signal.coherence) < 0.3   (big total variation, near-zero net — the position is swinging hard but going nowhere)",
       "strength_floor": "moderate",
       "description": "Volatility itself is the finding: high loudness, ~zero coherence (e.g. -10 then +10). Reading a trend into it would be wrong — there is no net direction.",
       "default_action": "Check data quality, demand spikiness, or stocking/ordering noise before treating any single point as a trend."
     },
-
     "_market_share_x_fcst": "The five findings below grade market-share-deviation trajectory (level + shape) against RollQ forecast attainment. Combined severity = ms_base(+loudness) + fcst_shortfall, so it rises when BOTH axes are bad and still fires on EITHER. Rank is NOT a trigger (re-enters per persona at Tier 5). Thresholds + implementation: findings.py.",
     "bad_to_worse": {
       "label": "Bad → worse",
-      "method": "rule", "impl": "findings.py",
-      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "method": "rule",
+      "impl": "findings.py",
+      "requires_signals": [
+        "mshare_dev_mat_step_1m_3m"
+      ],
       "rule": "level=bad (now < -3pp) AND net < 0 AND |coherence| >= 0.5  (loud clean decline while already below average)  +  FCST severity",
       "strength_floor": "high",
-      "description": "Below national average and on a clean worsening trend. The most severe market-share finding.",
+      "description": "Already below the peer average and still sliding on a clean downward trend. The most urgent share finding — losing ground from a weak base.",
       "default_action": "Diagnose and intervene; check account-level orders."
     },
     "bad_not_improving": {
       "label": "Bad & not improving",
-      "method": "rule", "impl": "findings.py",
-      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "method": "rule",
+      "impl": "findings.py",
+      "requires_signals": [
+        "mshare_dev_mat_step_1m_3m"
+      ],
       "rule": "level=bad (now < -3pp) AND not improving (net <= +0.3) AND not a clean steep decline  +  FCST severity",
       "strength_floor": "moderate",
-      "description": "Stuck below average — drifting or flat, no recovery.",
+      "description": "Below the peer average and going nowhere — flat or drifting, with no sign of recovery. Stuck.",
       "default_action": "Find what would unstick it; prioritise by FCST gap."
     },
     "ok_sudden_drop": {
       "label": "OK-ish but suddenly deteriorating",
-      "method": "rule", "impl": "findings.py",
-      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "method": "rule",
+      "impl": "findings.py",
+      "requires_signals": [
+        "mshare_dev_mat_step_1m_3m"
+      ],
       "rule": "level=ok (-3pp <= now <= +1pp) AND sudden recent down-break (last step <= -0.8 after a stable prior)  +  FCST severity",
       "strength_floor": "moderate",
-      "description": "Near average but just broke downward — catch it early.",
+      "description": "Was sitting near the peer average, then broke sharply downward this month. Catch it before it becomes a slide.",
       "default_action": "Investigate the recent break before it compounds."
     },
     "good_sudden_drop": {
       "label": "Good but suddenly deteriorating",
-      "method": "rule", "impl": "findings.py",
-      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "method": "rule",
+      "impl": "findings.py",
+      "requires_signals": [
+        "mshare_dev_mat_step_1m_3m"
+      ],
       "rule": "level=good (now > +1pp) AND sudden recent down-break (last step <= -0.8 after a stable prior)  +  FCST severity",
       "strength_floor": "moderate",
-      "description": "Above average but a sudden recent drop — a strong position starting to slip.",
+      "description": "Ahead of the peer average but slipped sharply this month — a strong position starting to crack.",
       "default_action": "Protect the position; find the cause of the break."
     },
     "bad_getting_better": {
       "label": "Bad but getting better",
-      "method": "rule", "impl": "findings.py",
-      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "method": "rule",
+      "impl": "findings.py",
+      "requires_signals": [
+        "mshare_dev_mat_step_1m_3m"
+      ],
       "rule": "level=bad (now < -3pp) AND improving (net > +0.3)  +  FCST severity",
       "strength_floor": "low",
-      "description": "Below average but recovering. Low concern on share; FCST may still flag it.",
+      "description": "Below the peer average but genuinely recovering — the gap is closing. Low concern on share, though forecast may still flag it.",
       "default_action": "Keep pushing; confirm the recovery holds."
     }
   },
-
   "insight_framings": {
     "_about": "An Insight = a Finding + business context for ONE persona. Each framing declares the persona's scope and cadence, WHICH findings to surface, when to STAY SILENT, and how to phrase it. The same finding yields a different insight per persona — or none at all. 'surface_when'/'suppress_when' are predicates over a finding's archetype, strength, and materiality.",
-
     "sales_manager": {
       "label": "Sales Manager",
       "scope": "all_territories",
@@ -247,7 +338,6 @@
       "phrasing_guide": "Only escalate true problems with scale. A recovering region produces NO insight for the CEO — suppression is the correct output."
     }
   },
-
   "signal_strength": {
     "_about": "INTRINSIC loudness + shape of a signal's trajectory — a property of the signal itself, independent of whether the region matters for business. Computed over the consecutive step-deltas of the metric across the signal's window (values oldest -> now). Keep all three measures; do not collapse to one scalar.",
     "magnitude": "V = sum(|step deltas|) — total variation / path length / LOUDNESS. Always >= 0, in metric units (pp). Answers 'how much did it move in total'. (This is the unsigned 'sum of deltas'.)",
@@ -256,26 +346,56 @@
     "signed_strength": "D * |rho| — convenience scalar: net displacement discounted by incoherence. Equals net for a perfectly clean trend, -> 0 for a pure oscillation. Use for sorting; never as a replacement for the three measures.",
     "loudness_bands_pp": {
       "_note": "Buckets for V (and for |net|). pp thresholds; choose ladder by metric kind.",
-      "position": { "very_loud": 2.0, "loud": 1.0, "moderate": 0.5 },
-      "growth":   { "very_loud": 15,  "loud": 10,  "moderate": 5 }
+      "position": {
+        "very_loud": 2.0,
+        "loud": 1.0,
+        "moderate": 0.5
+      },
+      "growth": {
+        "very_loud": 15,
+        "loud": 10,
+        "moderate": 5
+      }
     },
-    "coherence_bands": { "trend": 0.6, "oscillation": 0.3,
-      "_note": "|rho| >= trend => clean trend; |rho| < oscillation => oscillation; between => mixed." },
+    "coherence_bands": {
+      "trend": 0.6,
+      "oscillation": 0.3,
+      "_note": "|rho| >= trend => clean trend; |rho| < oscillation => oscillation; between => mixed."
+    },
     "shapes": {
-      "quiet":     "V < moderate                      -> nothing to report",
-      "trend":     "V >= loud AND |rho| >= trend       -> clean directional move (feeds Turnaround / Deteriorating)",
-      "unstable":  "V >= loud AND |rho| <  oscillation -> loud but going nowhere net (feeds Unstable)",
-      "mixed":     "otherwise                          -> some movement, partial direction"
+      "quiet": "V < moderate                      -> nothing to report",
+      "trend": "V >= loud AND |rho| >= trend       -> clean directional move (feeds Turnaround / Deteriorating)",
+      "unstable": "V >= loud AND |rho| <  oscillation -> loud but going nowhere net (feeds Unstable)",
+      "mixed": "otherwise                          -> some movement, partial direction"
     }
   },
-
   "relevance": {
     "_about": "EXTRINSIC filter — does a (loud) signal land somewhere that MATTERS for business? Separate from signal_strength: a signal can be loud and clean yet irrelevant (tiny region), or quiet yet relevant. relevance = materiality * loudness * horizon. Coherence does NOT enter relevance; it selects WHICH finding archetype (trend vs unstable).",
     "formula": "materiality * loudness * horizon",
-    "materiality_by_rank": { "ge_90": 4, "ge_75": 3, "ge_50": 2, "lt_50": 1 },
-    "loudness_by_V": { "very_loud": 4, "loud": 3, "moderate": 2, "quiet": 1,
-      "_note": "Banded from signal_strength.loudness_bands_pp for the metric kind." },
-    "horizon_by_period_type": { "MAT": 4, "YTD": 3, "RollQ": 2, "Month": 1 },
-    "bands": { "critical": ">=48", "high": ">=24", "moderate": ">=8", "low": "<8" }
+    "materiality_by_rank": {
+      "ge_90": 4,
+      "ge_75": 3,
+      "ge_50": 2,
+      "lt_50": 1
+    },
+    "loudness_by_V": {
+      "very_loud": 4,
+      "loud": 3,
+      "moderate": 2,
+      "quiet": 1,
+      "_note": "Banded from signal_strength.loudness_bands_pp for the metric kind."
+    },
+    "horizon_by_period_type": {
+      "MAT": 4,
+      "YTD": 3,
+      "RollQ": 2,
+      "Month": 1
+    },
+    "bands": {
+      "critical": ">=48",
+      "high": ">=24",
+      "moderate": ">=8",
+      "low": "<8"
+    }
   }
 }
