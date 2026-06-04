@@ -1891,19 +1891,19 @@ function renderNational() {
   const n = insTerr && insTerr.national;
   if (!n) return '';
   const sgn = (x, suf) => x == null ? '—' : `<span class="${x > 0 ? 'fcst-ok' : x < 0 ? 'fcst-miss' : ''}">${x > 0 ? '+' : ''}${x}${suf}</span>`;
-  const trend = !n.signal ? '' :
-    (n.signal.net > 0.1 ? `<span class="fcst-ok">gaining +${n.signal.net}pp/qtr</span>`
-      : n.signal.net < -0.1 ? `<span class="fcst-miss">slipping ${n.signal.net}pp/qtr</span>`
-      : 'flat');
+  const yoyTip = 'Year-over-year: vs the same period 12 months ago';
+  const popTip = 'Period-over-period: change vs the prior period (for MAT, vs last month’s MAT)';
+  const yoy = `<span class="has-def" title="${yoyTip}">YoY</span>`;
+  const pop = `<span class="has-def" title="${popTip}">PoP</span>`;
+  const msPP = n.share_series ? +(n.share_series[3] - n.share_series[2]).toFixed(2) : null;
   return `<div class="natl-card">
     <div class="natl-title">🌍 ${insData.brand} · National (product) — the big picture</div>
     <div class="natl-row">
       <span class="natl-big">€${(n.mat_sales / 1e6).toFixed(1)}M</span> MAT sales
-      <span class="natl-sep">·</span> YoY ${sgn(n.growth_py, '%')}
-      <span class="natl-sep">·</span> PoP ${sgn(n.growth_pp, '%')}
-      <span class="natl-sep">·</span> ${n.market_share}% market share
+      <span class="natl-sep">·</span> ${yoy} ${sgn(n.growth_py, '%')}
+      <span class="natl-sep">·</span> ${pop} ${sgn(n.growth_pp, '%')}
+      <span class="natl-sep">·</span> ${n.market_share}% market share <span class="rank-tag">(MAT)</span>${msPP != null ? `, ${sgn(msPP, 'pp')} ${pop}` : ''}
       <span class="natl-sep">·</span> vs plan ${sgn(n.growth_vs_fcst, 'pp')}
-      <span class="natl-sep">·</span> share ${trend}
     </div>
   </div>`;
 }
@@ -1931,6 +1931,7 @@ function renderTerritoryTable(td) {
   if (!td || !td.territories) return '';
   const sgn = (x, suf) => x == null ? '—' : `<span class="${x > 0 ? 'fcst-ok' : x < 0 ? 'fcst-miss' : ''}">${x > 0 ? '+' : ''}${x}${suf}</span>`;
   const head = ['Territory', 'MAT Sales', 'YoY', 'PoP', 'Share', 'MS dev (vs peers)', 'vs FCST', 'Signal'];
+  const tTips = { 'YoY': 'Year-over-year: vs the same period 12 months ago', 'PoP': 'Period-over-period: change vs the prior period (for MAT, vs last month’s MAT)' };
   const body = td.territories.map(r => {
     const sig = r.signal ? `<span class="pill shape-${r.signal.shape}">${r.signal.shape}</span> ${signed(r.signal.net)}` : '—';
     return `<tr>
@@ -1945,7 +1946,7 @@ function renderTerritoryTable(td) {
   }).join('');
   return `<div class="fnd-section">Territory metrics (MAT) — total sales, growth, share vs peers, plan attainment` +
     (td.national_fcst_growth != null ? ` · national fcst growth ${td.national_fcst_growth > 0 ? '+' : ''}${td.national_fcst_growth}%` : '') + `</div>` +
-    `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+    `<table class="sig"><thead><tr>${head.map(h => tTips[h] ? `<th class="has-def" title="${tTips[h]}">${h}</th>` : `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function territoryVerdict(name, rs) {
@@ -1980,7 +1981,7 @@ function renderManager(allRows) {
   })).sort((a, b) => b.crit - a.crit || b.high - a.high || b.rs.length - a.rs.length);
 
   const blocks = terrs.map(T => {
-    const rs = T.rs.slice().sort((a, b) => b.severity.score - a.severity.score || b.mat_rank - a.mat_rank);
+    const rs = T.rs.slice().sort((a, b) => b.mat_rank - a.mat_rank);   // both boxes sort by rank
     const esc = rs.filter(r => r.escalate);
     const other = rs.filter(r => !r.escalate);
 
@@ -2008,7 +2009,7 @@ function renderManager(allRows) {
       ? `<details class="more"><summary>${other.length} more flagged region${other.length > 1 ? 's' : ''}</summary>${inner || '<div class="ins-small">—</div>'}</details>` : '';
 
     const total = totByTerr[T.t];
-    const head = (total != null ? `<span class="rank-tag">${total}</span>/` : '') + `${T.rs.length} flagged` +
+    const head = `${T.rs.length}` + (total != null ? `<span class="rank-tag">/${total}</span>` : '') + ` flagged` +
       (T.crit ? ` · <span class="rel-critical">${T.crit} critical</span>` : '') +
       (T.high ? ` · <span class="rel-high">${T.high} high</span>` : '');
     return `<div class="ins-terr"><div class="ins-terr-h">${T.t} <span class="ins-counts">${head}</span></div>` +
