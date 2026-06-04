@@ -50,11 +50,13 @@ def territory_metrics(brand, asof=None):
         GROUP BY territory_name, year_month
     """, (brand,)).fetchall()
     natrows = con.execute("""
-        SELECT year_month AS ym, SUM(sales_eur) AS own,
+        SELECT year_month AS ym, SUM(sales_eur) AS own, SUM(units) AS units,
                SUM(CASE WHEN market_share > 0 THEN sales_eur * 100.0 / market_share ELSE 0 END) AS total
         FROM region_metrics WHERE brand_name = ? AND period_type = 'MAT' GROUP BY year_month
     """, (brand,)).fetchall()
-    nat_ms = {r['ym']: (r['own'] / r['total'] * 100 if r['total'] else 0) for r in natrows}
+    nat = {r['ym']: {'own': r['own'], 'units': r['units'],
+                     'ms': (r['own'] / r['total'] * 100 if r['total'] else 0)} for r in natrows}
+    nat_ms = {ym: v['ms'] for ym, v in nat.items()}
     # national forecast growth (same for every region of the brand) at asof
     fr = con.execute("""
         SELECT growth_py_sales, growth_vs_fcst_eur FROM region_metrics
@@ -63,6 +65,31 @@ def territory_metrics(brand, asof=None):
     """, (brand, asof)).fetchone()
     nat_fcst_growth = (fr['growth_py_sales'] - fr['growth_vs_fcst_eur']) if fr else None
     con.close()
+
+    # National product summary (no peer level above it yet — franchise comes
+    # later — so its market-share "signal" is the national share's own trajectory).
+    nat_at = lambda off: nat.get(yms[i - off]) if 0 <= i - off < len(yms) else None
+    ncur = nat.get(asof)
+    national = None
+    if ncur:
+        npy, npp = nat_at(12), nat_at(1)
+        ng_py = ((ncur['own'] - npy['own']) / npy['own'] * 100) if npy and npy['own'] else None
+        ng_pp = ((ncur['own'] - npp['own']) / npp['own'] * 100) if npp and npp['own'] else None
+        ngvf = (ng_py - nat_fcst_growth) if (ng_py is not None and nat_fcst_growth is not None) else None
+        sh = [nat_at(off)['ms'] if nat_at(off) else None for off in (3, 2, 1, 0)]
+        nsig = None
+        if all(x is not None for x in sh):
+            sh = [round(x, 2) for x in sh]
+            nsig = knowledge.signal_strength(sh, direction='higher_is_better', defs=defs, kind='position')
+        national = {
+            'mat_sales': round(ncur['own']), 'units': round(ncur['units']),
+            'growth_py': None if ng_py is None else round(ng_py, 1),
+            'growth_pp': None if ng_pp is None else round(ng_pp, 1),
+            'market_share': round(ncur['ms'], 1),
+            'growth_vs_fcst': None if ngvf is None else round(ngvf, 1),
+            'share_series': sh if all(x is not None for x in sh) else None,
+            'signal': nsig,
+        }
 
     byT = defaultdict(dict)
     for r in rows:
@@ -107,7 +134,7 @@ def territory_metrics(brand, asof=None):
     out.sort(key=lambda x: -x['mat_sales'])
     return {'brand': brand, 'asof': asof,
             'national_fcst_growth': None if nat_fcst_growth is None else round(nat_fcst_growth, 1),
-            'territories': out}
+            'national': national, 'territories': out}
 
 
 if __name__ == "__main__":

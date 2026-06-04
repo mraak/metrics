@@ -198,6 +198,11 @@ body.dark-theme .badge {
 .badge.dim  { background: #ddeeff; color: #2266aa; }
 .badge.fact { background: #ddfff0; color: #227755; }
 .badge.comp { background: #eeeeFF; color: #6655cc; }
+.badge.plan { background: #eee; color: #999; }
+body.dark-theme .badge.plan { background: #222733; color: #777; }
+.table.planned { opacity: 0.6; border-style: dashed; }
+.agg-note { font-size: 10px; color: #999; line-height: 1.45; margin: 4px 2px 0; }
+body.dark-theme .agg-note { color: #666; }
 
 body.dark-theme .badge.dim  { background: #162040; color: #6ab4d8; }
 body.dark-theme .badge.fact { background: #162510; color: #8ec85a; }
@@ -835,6 +840,18 @@ body.dark-theme .ceo-reds { color: #999; }
 .ins-ceo-none { font-size: 13px; color: #555; padding: 10px 0; max-width: 780px; line-height: 1.6; }
 body.dark-theme .ins-ceo-none { color: #aaa; }
 
+/* national product summary banner (all 3 user types) */
+.natl-card { border: 1px solid #d8e4ef; background: #f3f8fc; border-radius: 7px; padding: 11px 14px; margin-bottom: 14px; max-width: 1000px; }
+body.dark-theme .natl-card { border-color: #243244; background: #0e1622; }
+.natl-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #2266aa; margin-bottom: 6px; }
+body.dark-theme .natl-title { color: #6ab4d8; }
+.natl-row { font-size: 13px; color: #444; line-height: 1.7; }
+body.dark-theme .natl-row { color: #ccc; }
+.natl-big { font-size: 16px; font-weight: 700; color: #222; }
+body.dark-theme .natl-big { color: #fff; }
+.natl-sep { color: #bbb; margin: 0 3px; }
+body.dark-theme .natl-sep { color: #445; }
+
 /* context lens (per user type) */
 .ins-lens { font-size: 12px; color: #555; background: #f8f9fa; border-left: 3px solid #6ab4d8; border-radius: 4px; padding: 9px 12px; margin-bottom: 14px; line-height: 1.55; max-width: 1000px; }
 body.dark-theme .ins-lens { background: #0f1119; color: #aaa; border-left-color: #2a4a6a; }
@@ -1044,6 +1061,45 @@ body.dark-theme .rel-high { color: #e0a050; }
           </div>
           <div class="row-count">136,200 rows · 25mo × 4 periods × 6 brands × 227 regions</div>
         </div>
+
+        <div class="agg-note">↑ stored base grain. Rolled up <strong>on demand</strong> (not stored) to coarser grains — same metric structure at each level:</div>
+
+        <div class="table">
+          <div class="table-header">territory_metrics <span class="badge comp">computed</span></div>
+          <div class="table-rows">
+            <div class="row-section">Grain · territory × brand × period × ym</div>
+            <div class="table-row"><span class="col-name">mat_sales / units</span><span class="col-type">Σ regions</span></div>
+            <div class="table-row"><span class="col-name">growth_py / pp</span><span class="col-type">%</span></div>
+            <div class="table-row"><span class="col-name">market_share</span><span class="col-type">own ÷ Σ franchise</span></div>
+            <div class="table-row"><span class="col-name">mshare_deviation</span><span class="col-type">vs national</span></div>
+            <div class="table-row"><span class="col-name">growth_vs_fcst</span><span class="col-type">vs nat fcst</span></div>
+            <div class="table-row"><span class="col-name">signal / finding</span><span class="col-type">share traj.</span></div>
+          </div>
+          <div class="row-count">territory.py · 12 territories</div>
+        </div>
+
+        <div class="table">
+          <div class="table-header">product_metrics — national <span class="badge comp">computed</span></div>
+          <div class="table-rows">
+            <div class="row-section">Grain · brand × period × ym</div>
+            <div class="table-row"><span class="col-name">mat_sales / units</span><span class="col-type">Σ all regions</span></div>
+            <div class="table-row"><span class="col-name">growth_py / pp</span><span class="col-type">%</span></div>
+            <div class="table-row"><span class="col-name">market_share</span><span class="col-type">national</span></div>
+            <div class="table-row"><span class="col-name">growth_vs_fcst</span><span class="col-type">vs nat fcst</span></div>
+            <div class="table-row"><span class="col-name">signal</span><span class="col-type">national share traj.</span></div>
+          </div>
+          <div class="row-count">territory.py · 6 products · no peer level yet</div>
+        </div>
+
+        <div class="table planned">
+          <div class="table-header">franchise_metrics <span class="badge plan">planned</span></div>
+          <div class="table-rows">
+            <div class="row-section">Grain · franchise × period × ym</div>
+            <div class="table-row"><span class="col-name">multiple products</span><span class="col-type">Σ brands</span></div>
+            <div class="table-row"><span class="col-name">…</span><span class="col-type">not yet built</span></div>
+          </div>
+          <div class="row-count">next: aggregate across products in a franchise</div>
+        </div>
       </div>
 
     </div><!-- /canvas -->
@@ -1220,6 +1276,7 @@ body.dark-theme .rel-high { color: #e0a050; }
       </div>
       <div class="signals-body">
         <div class="ins-lens" id="ins-lens"></div>
+        <div id="ins-national"></div>
         <div id="ins-summary"></div>
         <div id="ins-results">Loading…</div>
       </div>
@@ -1819,9 +1876,31 @@ function renderFindings() {
 }
 
 // ── Insights tab: per-user mini-reports ──
+function renderNational() {
+  const n = insTerr && insTerr.national;
+  if (!n) return '';
+  const sgn = (x, suf) => x == null ? '—' : `<span class="${x > 0 ? 'fcst-ok' : x < 0 ? 'fcst-miss' : ''}">${x > 0 ? '+' : ''}${x}${suf}</span>`;
+  const trend = !n.signal ? '' :
+    (n.signal.net > 0.1 ? `<span class="fcst-ok">gaining +${n.signal.net}pp/qtr</span>`
+      : n.signal.net < -0.1 ? `<span class="fcst-miss">slipping ${n.signal.net}pp/qtr</span>`
+      : 'flat');
+  return `<div class="natl-card">
+    <div class="natl-title">🌍 ${insData.brand} · National (product) — the big picture</div>
+    <div class="natl-row">
+      <span class="natl-big">€${(n.mat_sales / 1e6).toFixed(1)}M</span> MAT sales
+      <span class="natl-sep">·</span> YoY ${sgn(n.growth_py, '%')}
+      <span class="natl-sep">·</span> PoP ${sgn(n.growth_pp, '%')}
+      <span class="natl-sep">·</span> ${n.market_share}% market share
+      <span class="natl-sep">·</span> vs plan ${sgn(n.growth_vs_fcst, 'pp')}
+      <span class="natl-sep">·</span> share ${trend}
+    </div>
+  </div>`;
+}
+
 function renderInsights() {
   if (!insData) return;
   document.getElementById('ins-lens').innerHTML = lensHtml();
+  document.getElementById('ins-national').innerHTML = renderNational();
   const sum = document.getElementById('ins-summary'), out = document.getElementById('ins-results');
   if (insUser === 'manager') {
     sum.innerHTML = summaryChips(insData, insData.rows);
