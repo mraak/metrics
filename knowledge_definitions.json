@@ -315,7 +315,10 @@
       "surface_when": "strength >= moderate AND materiality >= medium  (anything plan-relevant in any territory)",
       "suppress_when": "strength == low AND materiality < medium",
       "tone": "planning, coaching, prioritization",
-      "phrasing_guide": "Frame as where to spend the rep's attention this month. Recovery -> 'rep on track to recover an important region, keep it on the plan'."
+      "phrasing_guide": "Frame as where to spend the rep's attention this month. Recovery -> 'rep on track to recover an important region, keep it on the plan'.",
+      "territory_overview": "Lead each territory with an overall verdict from territory-level metrics (YoY growth, plan attainment): e.g. 'Bern looks healthy — growing YoY and beating plan — but N regions worth addressing.' A healthy territory can still hide troubled regions, so always pair the headline with the exceptions.",
+      "reminders": "The manager can't recall last month's report, so mark each region's month-over-month status: ✓ improved since last month; ↻ flagged again (red now and last month); ‼ red 3 consecutive months (unresolved). Also list regions that recovered out of the report since last month.",
+      "show_rank": "Every region mentioned carries its sales rank (rank_sales_eur percentile) so the manager can weigh it."
     },
     "sales_rep": {
       "label": "Sales Rep",
@@ -332,10 +335,11 @@
       "scope": "all_territories",
       "cadence": "monthly_to_quarterly",
       "decision": "Wants a picture of the MOST PROBLEMATIC regions and territories.",
-      "surface_when": "archetype in [deteriorating, dangerous_stability] AND strength == critical AND materiality == high",
+      "surface_when": "archetype in [bad_to_worse, ok_sudden_drop, good_sudden_drop, dangerous_stability] AND severity==critical AND (materiality high OR red 3 months running)",
       "suppress_when": "archetype in [star, turnaround, riding_wave] OR direction == improving  (an improving region is NOT a problem -> silence)",
       "tone": "strategic, exception-only, € at stake",
-      "phrasing_guide": "Only escalate true problems with scale. A recovering region produces NO insight for the CEO — suppression is the correct output."
+      "phrasing_guide": "Only escalate true problems with scale. A recovering region produces NO insight for the CEO — suppression is the correct output.",
+      "escalation": "Any region flagged 'red' (worsening / stuck) for 3 consecutive months enters the CEO report with ‼, regardless of size — neither the rep nor the manager resolved it within the cycle, so it is no longer just a field matter."
     }
   },
   "signal_strength": {

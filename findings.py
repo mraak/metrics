@@ -72,7 +72,52 @@ def severity(fid, strength, fc):
     return {'ms': base, 'fcst': fs, 'score': score, 'band': band}
 
 
+# "Red" findings = anything worsening / stuck (everything except the recovery one).
+RED = {'bad_to_worse', 'bad_not_improving', 'ok_sudden_drop', 'good_sudden_drop'}
+
+
+def _history(brand, asof, defs):
+    """Per region: is it 'red' (a worsening finding) this month, -1m, -2m?
+    Derive months_red (consecutive ending now), improved (was red last month,
+    not now), and escalate (red 3 months running — nobody fixed it)."""
+    con = server._conn()
+    lagcols = ", ".join(f"LAG(mshare_deviation,{k}) OVER w AS m{k}" for k in range(1, 6))
+    rows = con.execute(f"""
+        WITH s AS (
+          SELECT region_name, territory_name, year_month,
+                 mshare_deviation AS m0, {lagcols}, rank_sales_eur AS rk
+          FROM region_metrics WHERE brand_name=? AND period_type='MAT'
+          WINDOW w AS (PARTITION BY region_name ORDER BY year_month)
+        ) SELECT * FROM s WHERE year_month=?
+    """, (brand, asof)).fetchall()
+    con.close()
+
+    hist = {}
+    for r in rows:
+        ms = [r['m0'], r['m1'], r['m2'], r['m3'], r['m4'], r['m5']]
+        reds = []
+        for k in range(3):                      # now, -1m, -2m
+            win = ms[k:k + 4]                    # [m_k, m_{k+1}, m_{k+2}, m_{k+3}] = now..oldest
+            if any(x is None for x in win):
+                reds.append(None); continue
+            series = [round(x, 2) for x in reversed(win)]   # oldest -> now
+            st = knowledge.signal_strength(series, defs=defs, kind='position')
+            fid, _ = classify(series, st)
+            reds.append(fid in RED)
+        months_red = 0
+        for v in reds:
+            if v is True: months_red += 1
+            else: break
+        improved = (reds[1] is True) and (reds[0] is not True)
+        hist[r['region_name']] = {
+            'months_red': months_red, 'improved': improved, 'escalate': months_red >= 3,
+            'red_now': reds[0] is True, 'rank': r['rk'], 'territory': r['territory_name'],
+        }
+    return hist
+
+
 def find_findings(brand, asof=None, signal='mshare_dev_mat_step_1m_3m'):
+    defs = knowledge.load()
     con = server._conn()
     if not asof:
         asof = con.execute("SELECT MAX(year_month) FROM region_metrics").fetchone()[0]
@@ -106,13 +151,27 @@ def find_findings(brand, asof=None, signal='mshare_dev_mat_step_1m_3m'):
         })
     rows.sort(key=lambda x: (-x['severity']['score'], ORDER.index(x['finding']), -x['mat_rank']))
 
+    # month-over-month memory: attach reminder status, find regions that recovered
+    hist = _history(brand, asof, defs)
+    flagged = {r['region'] for r in rows}
+    for r in rows:
+        h = hist.get(r['region'], {})
+        r['months_red'] = h.get('months_red', 1 if r['finding'] in RED else 0)
+        r['improved'] = h.get('improved', False)
+        r['escalate'] = h.get('escalate', False)
+    recovered = sorted(
+        ({'region': rg, 'territory': h['territory'], 'rank': h['rank']}
+         for rg, h in hist.items() if h['improved'] and rg not in flagged),
+        key=lambda x: -x['rank'])
+
     counts = {f: 0 for f in ORDER}
     for x in rows:
         counts[x['finding']] += 1
     summary = [{'finding': f, 'label': FINDINGS[f][0], 'count': counts[f]} for f in ORDER]
     territories = sorted(set(x['territory'] for x in rows))
     return {'brand': brand, 'asof': asof, 'count': len(rows),
-            'summary': summary, 'territories': territories, 'rows': rows}
+            'summary': summary, 'territories': territories, 'rows': rows,
+            'recovered': recovered}
 
 
 if __name__ == "__main__":

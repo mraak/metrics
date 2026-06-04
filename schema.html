@@ -820,6 +820,14 @@ body.dark-theme .ins-terr-h { color: #ddd; }
 body.dark-theme .ins-list li { color: #bbb; }
 .ins-small { font-size: 11.5px; color: #999; margin-top: 3px; }
 body.dark-theme .ins-small { color: #888; }
+.terr-verdict { font-size: 12px; color: #555; margin: 0 0 7px; line-height: 1.5; }
+body.dark-theme .terr-verdict { color: #aaa; }
+.rank-tag { font-size: 10px; color: #999; font-family: 'Menlo', monospace; }
+body.dark-theme .rank-tag { color: #777; }
+.rem-up { color: #1a8a55; font-weight: 600; font-size: 11px; }
+.rem-again { color: #aa6611; font-weight: 600; font-size: 11px; }
+.rem-esc { color: #cc2222; font-weight: 700; font-size: 11px; }
+body.dark-theme .rem-up { color: #8ec85a; } body.dark-theme .rem-again { color: #e0a050; } body.dark-theme .rem-esc { color: #ff6b5e; }
 .ins-list.ceo li { font-size: 13px; line-height: 1.85; color: #333; }
 body.dark-theme .ins-list.ceo li { color: #ccc; }
 .ins-ceo-none { font-size: 13px; color: #555; padding: 10px 0; max-width: 780px; line-height: 1.6; }
@@ -1752,8 +1760,15 @@ function peerGap(r) {
                     : 'level with peers';
   return ms ? `${ms}, ${dir}` : dir;
 }
+function reminderBadge(r) {
+  if (r.escalate) return ' <span class="rem-esc">‼ 3rd month — unresolved</span>';
+  if (r.improved) return ' <span class="rem-up">✓ improved since last month</span>';
+  if (r.months_red >= 2) return ' <span class="rem-again">↻ flagged again</span>';
+  return '';
+}
 function insightSentence(r) {
-  const sm = sinceLast(r), fc = fcstPhrase(r), reg = `<strong>${r.region}</strong>`, pg = peerGap(r);
+  const sm = sinceLast(r), fc = fcstPhrase(r), pg = peerGap(r);
+  const reg = `<strong>${r.region}</strong> <span class="rank-tag">rank ${r.mat_rank}</span>`;
   switch (r.finding) {
     case 'bad_to_worse':       return `${reg} — worsening: ${pg}; ${sm}; ${fc}.`;
     case 'bad_not_improving':  return `${reg} — stuck below peers: ${pg}; ${sm}; ${fc}.`;
@@ -1841,8 +1856,27 @@ function renderTerritoryTable(td) {
     `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
+function territoryVerdict(name, rs) {
+  const t = insTerr && insTerr.territories.find(x => x.territory === name);
+  if (!t) return '';
+  const troubled = rs.filter(r => r.finding !== 'bad_getting_better').length;
+  const crit = rs.filter(r => r.severity.band === 'critical').length;
+  const esc = rs.filter(r => r.escalate).length;
+  const grow = t.growth_py == null ? '' : `${t.growth_py > 0 ? 'growing' : 'declining'} ${t.growth_py > 0 ? '+' : ''}${t.growth_py}% YoY`;
+  const plan = t.growth_vs_fcst == null ? '' :
+    (t.growth_vs_fcst >= 0 ? `<span class="fcst-ok">beating plan (+${t.growth_vs_fcst}pp)</span>`
+                           : `<span class="fcst-miss">behind plan (${t.growth_vs_fcst}pp)</span>`);
+  const health = (t.growth_py > 0 && t.growth_vs_fcst >= 0) ? 'looks healthy overall'
+               : (t.growth_py > 0 ? 'growing but behind plan' : 'under pressure');
+  return `<div class="terr-verdict"><strong>${health}</strong> — ${grow}, ${plan}; but ${troubled} region${troubled === 1 ? '' : 's'} worth addressing` +
+    (crit ? ` (<span class="rel-critical">${crit} critical</span>)` : '') +
+    (esc ? ` · <span class="rem-esc">${esc} unresolved 3-month</span>` : '') + `.</div>`;
+}
+
 function renderManager(allRows) {
   const terrTable = renderTerritoryTable(insTerr);
+  const recByTerr = {};
+  (insData.recovered || []).forEach(r => { (recByTerr[r.territory] = recByTerr[r.territory] || []).push(r); });
   const by = {};
   allRows.forEach(r => { (by[r.territory] = by[r.territory] || []).push(r); });
   const terrs = Object.entries(by).map(([t, rs]) => ({
@@ -1854,19 +1888,24 @@ function renderManager(allRows) {
     const rs = T.rs.slice().sort((a, b) => b.severity.score - a.severity.score || b.mat_rank - a.mat_rank);
     const big = rs.filter(r => r.mat_rank >= BIG_RANK);
     const small = rs.filter(r => r.mat_rank < BIG_RANK);
-    const bigHtml = big.map(r => `<li>${insightSentence(r)}${sevTag(r)}</li>`).join('');
-    const sWorse = small.filter(r => r.finding !== 'bad_getting_better').map(r => r.region);
-    const sBetter = small.filter(r => r.finding === 'bad_getting_better').map(r => r.region);
-    let smallLine = '';
-    if (sWorse.length) smallLine += `<div class="ins-small"><span class="fcst-miss">Smaller, worsening:</span> ${sWorse.join(', ')}.</div>`;
-    if (sBetter.length) smallLine += `<div class="ins-small"><span class="fcst-ok">Smaller, recovering:</span> ${sBetter.join(', ')}.</div>`;
+    const bigHtml = big.map(r => `<li>${insightSentence(r)}${reminderBadge(r)}${sevTag(r)}</li>`).join('');
+    const smName = r => `${r.region} <span class="rank-tag">r${r.mat_rank}</span>${r.escalate ? ' ‼' : ''}`;
+    const sWorse = small.filter(r => r.finding !== 'bad_getting_better').map(smName);
+    const sBetter = small.filter(r => r.finding === 'bad_getting_better').map(smName);
+    const rec = (recByTerr[T.t] || []).map(r => `${r.region} <span class="rank-tag">r${r.rank}</span>`);
+    let lines = '';
+    if (sWorse.length) lines += `<div class="ins-small"><span class="fcst-miss">Smaller, worsening:</span> ${sWorse.join(', ')}.</div>`;
+    if (sBetter.length) lines += `<div class="ins-small"><span class="fcst-ok">Smaller, recovering:</span> ${sBetter.join(', ')}.</div>`;
+    if (rec.length) lines += `<div class="ins-small"><span class="rem-up">✓ Recovered since last month:</span> ${rec.join(', ')}.</div>`;
     const counts = `${T.rs.length} flagged` +
       (T.crit ? ` · <span class="rel-critical">${T.crit} critical</span>` : '') +
       (T.high ? ` · <span class="rel-high">${T.high} high</span>` : '');
-    return `<div class="ins-terr"><div class="ins-terr-h">${T.t} <span class="ins-counts">${counts}</span></div>${bigHtml ? `<ul class="ins-list">${bigHtml}</ul>` : ''}${smallLine}</div>`;
+    return `<div class="ins-terr"><div class="ins-terr-h">${T.t} <span class="ins-counts">${counts}</span></div>` +
+      territoryVerdict(T.t, T.rs) +
+      `${bigHtml ? `<ul class="ins-list">${bigHtml}</ul>` : ''}${lines}</div>`;
   }).join('');
   return terrTable +
-    `<div class="fnd-section">By region — bigger regions detailed, smaller ones just flagged. “Since last month” = the −1m move.</div>${blocks}`;
+    `<div class="fnd-section">By region — bigger regions detailed, smaller ones just flagged. “Since last month” = the −1m move; ‼ = red 3 months running.</div>${blocks}`;
 }
 
 function renderRep(terr, rows) {
@@ -1889,14 +1928,20 @@ function renderRep(terr, rows) {
 }
 
 function renderCeo(allRows) {
-  const sel = allRows.filter(r => r.severity.band === 'critical' && r.mat_rank >= 80 && r.finding !== 'bad_getting_better')
-    .sort((a, b) => b.severity.score - a.severity.score || b.mat_rank - a.mat_rank);
+  // Critical regions that are either big markets OR red 3 months running
+  // (unresolved by rep & manager — escalates regardless of size).
+  const sel = allRows.filter(r => r.severity.band === 'critical' && r.finding !== 'bad_getting_better'
+      && (r.mat_rank >= 80 || r.escalate))
+    .sort((a, b) => (b.escalate - a.escalate) || b.severity.score - a.severity.score || b.mat_rank - a.mat_rank);
   if (!sel.length) {
-    return `<div class="ins-ceo-none">Nothing requires board attention this month — no critical findings in the biggest markets. Smaller or recovering regions are handled at the rep / manager level.</div>`;
+    return `<div class="ins-ceo-none">Nothing requires board attention this month — no critical findings in the biggest markets, and nothing left unresolved for three months. Smaller or recovering regions are handled at the rep / manager level.</div>`;
   }
+  const escN = sel.filter(r => r.escalate).length;
   const items = sel.map(r =>
-    `<li><strong>${r.territory} / ${r.region}</strong> — ${r.label.toLowerCase()}: ${peerGap(r)}; ${fcstPhrase(r)}.${sevTag(r)}</li>`).join('');
-  return `<div class="fnd-section">Exec summary — ${sel.length} critical region(s) in the biggest markets</div>` +
+    `<li>${r.escalate ? '<span class="rem-esc">‼</span> ' : ''}<strong>${r.territory} / ${r.region}</strong> <span class="rank-tag">rank ${r.mat_rank}</span> — ${r.label.toLowerCase()}: ${peerGap(r)}; ${fcstPhrase(r)}.` +
+    (r.escalate ? ` <span class="rem-esc">red ${r.months_red} months — rep & manager have not resolved it.</span>` : '') +
+    `${sevTag(r)}</li>`).join('');
+  return `<div class="fnd-section">Exec summary — ${sel.length} critical region(s)${escN ? `, ${escN} unresolved 3+ months (‼)` : ''}</div>` +
     `<ul class="ins-list ceo">${items}</ul>`;
 }
 </script>
