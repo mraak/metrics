@@ -332,14 +332,14 @@
     },
     "ceo": {
       "label": "CEO",
-      "scope": "all_territories",
+      "scope": "product_x_territory",
       "cadence": "monthly_to_quarterly",
       "decision": "Wants a picture of the MOST PROBLEMATIC regions and territories.",
-      "surface_when": "archetype in [bad_to_worse, ok_sudden_drop, good_sudden_drop, dangerous_stability] AND severity==critical AND (materiality high OR red 3 months running)",
+      "surface_when": "territory has bigger regions (high materiality) red 3 months running, OR the territory itself is behind plan / deteriorating on share",
       "suppress_when": "archetype in [star, turnaround, riding_wave] OR direction == improving  (an improving region is NOT a problem -> silence)",
       "tone": "strategic, exception-only, € at stake",
       "phrasing_guide": "Only escalate true problems with scale. A recovering region produces NO insight for the CEO — suppression is the correct output.",
-      "escalation": "Any region flagged 'red' (worsening / stuck) for 3 consecutive months enters the CEO report with ‼, regardless of size — neither the rep nor the manager resolved it within the cycle, so it is no longer just a field matter."
+      "escalation": "Escalate at the TERRITORY level — the Product × Territory view is granular enough for the board. A territory enters the CEO report if it has bigger regions flagged red for 3 consecutive months (rep & manager did not resolve them), or if the territory's own metrics are behind plan or its share is deteriorating. The report names the territory, its product/territory metrics, and the COUNT of bigger regions red for the 3rd month (‼) — individual region detail stays with the rep & manager."
     }
   },
   "signal_strength": {

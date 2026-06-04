@@ -1861,7 +1861,7 @@ function territoryVerdict(name, rs) {
   if (!t) return '';
   const troubled = rs.filter(r => r.finding !== 'bad_getting_better').length;
   const crit = rs.filter(r => r.severity.band === 'critical').length;
-  const esc = rs.filter(r => r.escalate).length;
+  const esc = rs.filter(r => r.escalate && r.mat_rank >= BIG_RANK).length;
   const grow = t.growth_py == null ? '' : `${t.growth_py > 0 ? 'growing' : 'declining'} ${t.growth_py > 0 ? '+' : ''}${t.growth_py}% YoY`;
   const plan = t.growth_vs_fcst == null ? '' :
     (t.growth_vs_fcst >= 0 ? `<span class="fcst-ok">beating plan (+${t.growth_vs_fcst}pp)</span>`
@@ -1870,7 +1870,7 @@ function territoryVerdict(name, rs) {
                : (t.growth_py > 0 ? 'growing but behind plan' : 'under pressure');
   return `<div class="terr-verdict"><strong>${health}</strong> — ${grow}, ${plan}; but ${troubled} region${troubled === 1 ? '' : 's'} worth addressing` +
     (crit ? ` (<span class="rel-critical">${crit} critical</span>)` : '') +
-    (esc ? ` · <span class="rem-esc">${esc} unresolved 3-month</span>` : '') + `.</div>`;
+    (esc ? ` · <span class="rem-esc">${esc} bigger region${esc > 1 ? 's' : ''} red for 3rd month</span>` : '') + `.</div>`;
 }
 
 function renderManager(allRows) {
@@ -1928,20 +1928,38 @@ function renderRep(terr, rows) {
 }
 
 function renderCeo(allRows) {
-  // Critical regions that are either big markets OR red 3 months running
-  // (unresolved by rep & manager — escalates regardless of size).
-  const sel = allRows.filter(r => r.severity.band === 'critical' && r.finding !== 'bad_getting_better'
-      && (r.mat_rank >= 80 || r.escalate))
-    .sort((a, b) => (b.escalate - a.escalate) || b.severity.score - a.severity.score || b.mat_rank - a.mat_rank);
-  if (!sel.length) {
-    return `<div class="ins-ceo-none">Nothing requires board attention this month — no critical findings in the biggest markets, and nothing left unresolved for three months. Smaller or recovering regions are handled at the rep / manager level.</div>`;
+  // Territory-level exec view: a territory escalates if it has BIGGER regions
+  // red 3 months running, or the territory itself is behind plan / deteriorating.
+  const bigEscByTerr = {};
+  allRows.forEach(r => { if (r.escalate && r.mat_rank >= BIG_RANK) bigEscByTerr[r.territory] = (bigEscByTerr[r.territory] || 0) + 1; });
+  const terrs = (insTerr ? insTerr.territories : []).map(t => {
+    const bigEsc = bigEscByTerr[t.territory] || 0;
+    const behind = t.growth_vs_fcst != null && t.growth_vs_fcst <= -5;
+    const deteriorating = t.finding && t.finding !== 'bad_getting_better';
+    // territory-level problem outranks hidden region issues
+    const terrProblem = (deteriorating ? 2 : 0) + (behind ? 1 : 0);
+    return { t, bigEsc, terrProblem, flag: bigEsc > 0 || behind || deteriorating };
+  }).filter(x => x.flag)
+    .sort((a, b) => b.terrProblem - a.terrProblem || b.bigEsc - a.bigEsc || (a.t.growth_vs_fcst ?? 0) - (b.t.growth_vs_fcst ?? 0));
+
+  if (!terrs.length) {
+    return `<div class="ins-ceo-none">Nothing requires board attention this month — every territory is growing, on plan, and no major region is unresolved.</div>`;
   }
-  const escN = sel.filter(r => r.escalate).length;
-  const items = sel.map(r =>
-    `<li>${r.escalate ? '<span class="rem-esc">‼</span> ' : ''}<strong>${r.territory} / ${r.region}</strong> <span class="rank-tag">rank ${r.mat_rank}</span> — ${r.label.toLowerCase()}: ${peerGap(r)}; ${fcstPhrase(r)}.` +
-    (r.escalate ? ` <span class="rem-esc">red ${r.months_red} months — rep & manager have not resolved it.</span>` : '') +
-    `${sevTag(r)}</li>`).join('');
-  return `<div class="fnd-section">Exec summary — ${sel.length} critical region(s)${escN ? `, ${escN} unresolved 3+ months (‼)` : ''}</div>` +
+  const items = terrs.map(({ t, bigEsc }) => {
+    const grow = `${t.growth_py > 0 ? '+' : ''}${t.growth_py}% YoY`;
+    const plan = t.growth_vs_fcst == null ? '' :
+      (t.growth_vs_fcst >= 0 ? `<span class="fcst-ok">on plan (+${t.growth_vs_fcst}pp)</span>`
+                             : `<span class="fcst-miss">behind plan (${t.growth_vs_fcst}pp)</span>`);
+    const share = !t.signal ? '' :
+      (t.signal.shape === 'trend' && t.signal.net < 0 ? 'share deteriorating'
+        : t.signal.shape === 'unstable' ? 'share volatile'
+        : `share ${t.mshare_deviation >= 0 ? '+' : ''}${t.mshare_deviation}pp vs peers`);
+    const esc = bigEsc ? ` <span class="rem-esc">‼ ${bigEsc} bigger region${bigEsc > 1 ? 's' : ''} red for 3rd month</span>` : '';
+    return `<li><strong>${t.territory}</strong> — €${(t.mat_sales / 1e6).toFixed(1)}M, ${grow}, ${plan}; ${share}.${esc}</li>`;
+  }).join('');
+  const escT = terrs.filter(x => x.bigEsc).length;
+  return `<div class="fnd-section">${insData.brand} · territory exec view — ${terrs.length} territor${terrs.length > 1 ? 'ies' : 'y'} need attention` +
+    `${escT ? `, ${escT} with bigger regions unresolved 3 months (‼)` : ''}</div>` +
     `<ul class="ins-list ceo">${items}</ul>`;
 }
 </script>
