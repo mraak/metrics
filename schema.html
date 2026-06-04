@@ -808,6 +808,18 @@ body.dark-theme .sevbar { background: #1a1f2e; }
 .sev-moderate > i { background: #caa23a; } .sev-low > i { background: #9bbf6a; }
 .fcst-miss { color: #cc3322; } .fcst-ok { color: #1a8a55; }
 body.dark-theme .fcst-miss { color: #e57368; } body.dark-theme .fcst-ok { color: #8ec85a; }
+
+/* Sales-Manager insight prose */
+.ins-terr { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #eee; max-width: 1000px; }
+body.dark-theme .ins-terr { border-bottom-color: #1a1f2e; }
+.ins-terr-h { font-size: 13px; font-weight: 700; color: #222; margin-bottom: 5px; }
+body.dark-theme .ins-terr-h { color: #ddd; }
+.ins-counts { font-weight: 400; font-size: 11px; color: #888; }
+.ins-list { margin: 2px 0 5px 18px; padding: 0; }
+.ins-list li { font-size: 12.5px; line-height: 1.75; color: #444; }
+body.dark-theme .ins-list li { color: #bbb; }
+.ins-small { font-size: 11.5px; color: #999; margin-top: 3px; }
+body.dark-theme .ins-small { color: #888; }
 table.sig td.num { text-align: right; font-family: 'Menlo', monospace; }
 table.sig tr:hover td { background: #f6f9ff; }
 body.dark-theme table.sig tr:hover td { background: #0e1828; }
@@ -1580,6 +1592,32 @@ function fcstCell(r) {
   return r.fcst_meets ? `<span class="fcst-ok">+${r.fcst_rollq}pp</span>`
                       : `<span class="fcst-miss">${r.fcst_rollq}pp</span>`;
 }
+
+/* Sales-Manager insight prose: foreground the month-over-month (−1m) move. */
+const BIG_RANK = 70;   // materiality cut: detail big regions, only mention small ones
+function sinceLast(r) {
+  const s = r.series, d = s[s.length - 1] - s[s.length - 2];   // Δ1m = now − last month
+  if (d > 0.1) return `<span class="fcst-ok">up +${d.toFixed(1)} since last month</span>`;
+  if (d < -0.1) return `<span class="fcst-miss">down ${Math.abs(d).toFixed(1)} since last month</span>`;
+  return `flat since last month`;
+}
+function fcstPhrase(r) {
+  if (r.fcst_rollq === null) return 'no plan data';
+  return r.fcst_meets ? `<span class="fcst-ok">meeting plan (+${r.fcst_rollq}pp)</span>`
+                      : `<span class="fcst-miss">missing plan (${r.fcst_rollq}pp)</span>`;
+}
+function insightSentence(r) {
+  const now = r.now.toFixed(1) + 'pp', sm = sinceLast(r), fc = fcstPhrase(r);
+  const reg = `<strong>${r.region}</strong>`;
+  switch (r.finding) {
+    case 'bad_to_worse':       return `${reg} — worsening: share gap ${now}, ${sm}; ${fc}.`;
+    case 'bad_not_improving':  return `${reg} — stuck below average at ${now}, ${sm}; ${fc}.`;
+    case 'ok_sudden_drop':     return `${reg} — was near average (${now}) but dropped sharply last month (${sm}); ${fc}.`;
+    case 'good_sudden_drop':   return `${reg} — strong at ${now} but slipped last month (${sm}); ${fc}.`;
+    case 'bad_getting_better': return `${reg} — recovering: ${now}, ${sm}; ${fc}.`;
+  }
+}
+function sevTag(r) { return ` <span class="rel-${r.severity.band}">[${r.severity.band}]</span>`; }
 function summaryChips(rows) {
   const counts = {}; fndData.summary.forEach(s => counts[s.finding] = 0);
   rows.forEach(r => counts[r.finding]++);
@@ -1595,24 +1633,35 @@ function renderFindings() {
   const sum = document.getElementById('fnd-summary');
 
   if (fndPersona === 'manager') {
-    // Less data: a territory rollup to plan the month across all territories.
+    // Monthly review prose: detail big regions, only mention small ones.
     sum.innerHTML = summaryChips(fndData.rows);
     const by = {};
     fndData.rows.forEach(r => { (by[r.territory] = by[r.territory] || []).push(r); });
     const terrs = Object.entries(by).map(([t, rs]) => ({
-      t, n: rs.length,
+      t, rs,
       crit: rs.filter(r => r.severity.band === 'critical').length,
       high: rs.filter(r => r.severity.band === 'high').length,
-      worst: rs.reduce((a, b) => b.severity.score > a.severity.score ? b : a),
-    })).sort((a, b) => b.crit - a.crit || b.high - a.high || b.n - a.n);
-    const head = ['Territory', 'Flagged', 'Critical', 'High', 'Most severe'];
-    const body = terrs.map(x => `<tr>
-      <td>${x.t}</td><td class="num">${x.n}</td>
-      <td class="num">${x.crit ? `<span class="rel-critical">${x.crit}</span>` : '·'}</td>
-      <td class="num">${x.high ? `<span class="rel-high">${x.high}</span>` : '·'}</td>
-      <td>${fpill(x.worst)} <span class="spark">${x.worst.region}</span></td></tr>`).join('');
-    out.innerHTML = `<div class="fnd-section">By territory — where to focus this month (${terrs.length} territories)</div>` +
-      `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+    })).sort((a, b) => b.crit - a.crit || b.high - a.high || b.rs.length - a.rs.length);
+
+    const blocks = terrs.map(T => {
+      const rs = T.rs.slice().sort((a, b) => b.severity.score - a.severity.score || b.mat_rank - a.mat_rank);
+      const big = rs.filter(r => r.mat_rank >= BIG_RANK);
+      const small = rs.filter(r => r.mat_rank < BIG_RANK);
+      const bigHtml = big.map(r => `<li>${insightSentence(r)}${sevTag(r)}</li>`).join('');
+      const sWorse = small.filter(r => r.finding !== 'bad_getting_better').map(r => r.region);
+      const sBetter = small.filter(r => r.finding === 'bad_getting_better').map(r => r.region);
+      let smallLine = '';
+      if (sWorse.length) smallLine += `<div class="ins-small"><span class="fcst-miss">Smaller, worsening:</span> ${sWorse.join(', ')}.</div>`;
+      if (sBetter.length) smallLine += `<div class="ins-small"><span class="fcst-ok">Smaller, recovering:</span> ${sBetter.join(', ')}.</div>`;
+      const counts = `${T.rs.length} flagged` +
+        (T.crit ? ` · <span class="rel-critical">${T.crit} critical</span>` : '') +
+        (T.high ? ` · <span class="rel-high">${T.high} high</span>` : '');
+      return `<div class="ins-terr">
+        <div class="ins-terr-h">${T.t} <span class="ins-counts">${counts}</span></div>
+        ${bigHtml ? `<ul class="ins-list">${bigHtml}</ul>` : ''}
+        ${smallLine}</div>`;
+    }).join('');
+    out.innerHTML = `<div class="fnd-section">Monthly review — bigger regions detailed, smaller ones just flagged. “Since last month” = the −1m move.</div>${blocks}`;
   } else {
     // More data: full evidence for the rep's own territory.
     const terr = document.getElementById('fnd-territory').value;
