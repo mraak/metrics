@@ -1688,6 +1688,7 @@ function renderFindings() {
   const rows = filter ? fndData.rows.filter(r => r.finding === filter) : fndData.rows;
   document.getElementById('fnd-summary').innerHTML = summaryChips(fndData, fndData.rows);
   const head = ['Severity', 'Finding', 'Territory', 'Region', 'Share', 'Peer gap', 'Trajectory (m3→now)', 'V', 'net', 'ρ', 'shape', 'FCST', 'rank'];
+  const TIP = { V: 1, net: 1, 'ρ': 1, shape: 1 };   // hover definitions for the strength columns
   const body = rows.map(r => { const s = r.strength; return `<tr>
     <td>${sevBar(r.severity)}</td>
     <td>${fpill(r)}</td>
@@ -1702,9 +1703,11 @@ function renderFindings() {
     <td><span class="pill shape-${s.shape}">${s.shape}</span></td>
     <td class="num">${fcstCell(r)}</td>
     <td class="num">${r.mat_rank}</td></tr>`; }).join('');
+  const thead = head.map(h => (TIP[h] && SIG_DEFS[h])
+    ? `<th class="has-def" title="${SIG_DEFS[h]}">${h}</th>` : `<th>${h}</th>`).join('');
   document.getElementById('fnd-results').innerHTML =
     `<div class="fnd-section">Objective catalog — every flagged region (${rows.length})</div>` +
-    `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+    `<table class="sig"><thead><tr>${thead}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 // ── Insights tab: per-user mini-reports ──
