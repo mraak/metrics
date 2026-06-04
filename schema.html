@@ -1608,7 +1608,13 @@ function sortBy(i) {
 
 /* ── Findings tab ── */
 let findingsInited = false, insightsInited = false, fndData = null, insData = null, insUser = 'manager';
-const findingsCache = {};
+let insTerr = null;
+const findingsCache = {}, territoryCache = {};
+async function getTerritory(brand) {
+  if (territoryCache[brand]) return territoryCache[brand];
+  try { const d = await (await fetch('/api/territory?brand=' + encodeURIComponent(brand))).json(); territoryCache[brand] = d; return d; }
+  catch (e) { return null; }
+}
 let KN = null;
 async function getKnowledge() {
   if (KN) return KN;
@@ -1702,6 +1708,7 @@ async function loadInsights() {
   const data = await getFindings(document.getElementById('ins-brand').value);
   if (!data || data.error) { out.innerHTML = `<div class="sig-error">${(data && data.error) || 'error'}</div>`; return; }
   insData = data;
+  insTerr = await getTerritory(document.getElementById('ins-brand').value);
   document.getElementById('ins-territory').innerHTML = data.territories.map(t => `<option>${t}</option>`).join('');
   document.getElementById('ins-meta').textContent = `${data.brand} · as-of ${data.asof} · ${data.count} findings`;
   renderInsights();
@@ -1813,7 +1820,29 @@ function renderInsights() {
   }
 }
 
+function renderTerritoryTable(td) {
+  if (!td || !td.territories) return '';
+  const sgn = (x, suf) => x == null ? '—' : `<span class="${x > 0 ? 'fcst-ok' : x < 0 ? 'fcst-miss' : ''}">${x > 0 ? '+' : ''}${x}${suf}</span>`;
+  const head = ['Territory', 'MAT Sales', 'YoY', 'PoP', 'Share', 'MS dev (vs peers)', 'vs FCST', 'Signal'];
+  const body = td.territories.map(r => {
+    const sig = r.signal ? `<span class="pill shape-${r.signal.shape}">${r.signal.shape}</span> ${signed(r.signal.net)}` : '—';
+    return `<tr>
+      <td>${r.territory}</td>
+      <td class="num">€${(r.mat_sales / 1e6).toFixed(2)}M</td>
+      <td class="num">${sgn(r.growth_py, '%')}</td>
+      <td class="num">${sgn(r.growth_pp, '%')}</td>
+      <td class="num">${r.market_share}%</td>
+      <td class="num">${sgn(r.mshare_deviation, 'pp')}</td>
+      <td class="num">${sgn(r.growth_vs_fcst, 'pp')}</td>
+      <td class="num">${sig}</td></tr>`;
+  }).join('');
+  return `<div class="fnd-section">Territory metrics (MAT) — total sales, growth, share vs peers, plan attainment` +
+    (td.national_fcst_growth != null ? ` · national fcst growth ${td.national_fcst_growth > 0 ? '+' : ''}${td.national_fcst_growth}%` : '') + `</div>` +
+    `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+}
+
 function renderManager(allRows) {
+  const terrTable = renderTerritoryTable(insTerr);
   const by = {};
   allRows.forEach(r => { (by[r.territory] = by[r.territory] || []).push(r); });
   const terrs = Object.entries(by).map(([t, rs]) => ({
@@ -1836,7 +1865,8 @@ function renderManager(allRows) {
       (T.high ? ` · <span class="rel-high">${T.high} high</span>` : '');
     return `<div class="ins-terr"><div class="ins-terr-h">${T.t} <span class="ins-counts">${counts}</span></div>${bigHtml ? `<ul class="ins-list">${bigHtml}</ul>` : ''}${smallLine}</div>`;
   }).join('');
-  return `<div class="fnd-section">Monthly review — bigger regions detailed, smaller ones just flagged. “Since last month” = the −1m move.</div>${blocks}`;
+  return terrTable +
+    `<div class="fnd-section">By region — bigger regions detailed, smaller ones just flagged. “Since last month” = the −1m move.</div>${blocks}`;
 }
 
 function renderRep(terr, rows) {
