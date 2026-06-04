@@ -64,6 +64,9 @@ def territory_metrics(brand, asof=None):
           AND growth_py_sales IS NOT NULL AND growth_vs_fcst_eur IS NOT NULL LIMIT 1
     """, (brand, asof)).fetchone()
     nat_fcst_growth = (fr['growth_py_sales'] - fr['growth_vs_fcst_eur']) if fr else None
+    rc = {r['t']: r['n'] for r in con.execute(
+        "SELECT territory_name AS t, COUNT(DISTINCT region_name) AS n "
+        "FROM region_metrics WHERE brand_name=? GROUP BY territory_name", (brand,))}
     con.close()
 
     # National product summary (no peer level above it yet — franchise comes
@@ -119,6 +122,7 @@ def territory_metrics(brand, asof=None):
                 sev = findings.severity(fid, sig, gvf)
         out.append({
             'territory': t,
+            'region_count': rc.get(t, 0),
             'mat_sales': round(cur['own']),
             'units': round(cur['units']),
             'growth_py': None if g_py is None else round(g_py, 1),
