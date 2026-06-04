@@ -339,7 +339,8 @@
       "suppress_when": "archetype in [star, turnaround, riding_wave] OR direction == improving  (an improving region is NOT a problem -> silence)",
       "tone": "strategic, exception-only, € at stake",
       "phrasing_guide": "Only escalate true problems with scale. A recovering region produces NO insight for the CEO — suppression is the correct output.",
-      "escalation": "Escalate at the TERRITORY level — the Product × Territory view is granular enough for the board. A territory enters the CEO report if it has bigger regions flagged red for 3 consecutive months (rep & manager did not resolve them), or if the territory's own metrics are behind plan or its share is deteriorating. The report names the territory, its product/territory metrics, and the COUNT of bigger regions red for the 3rd month (‼) — individual region detail stays with the rep & manager."
+      "escalation": "Escalate at the TERRITORY level — the Product × Territory view is granular enough for the board. A territory enters the CEO report if it has bigger regions flagged red for 3 consecutive months (rep & manager did not resolve them), or if the territory's own metrics are behind plan or its share is deteriorating. The report names the territory, its product/territory metrics, and the COUNT of bigger regions red for the 3rd month (‼) — individual region detail stays with the rep & manager.",
+      "order": "Always ordered by territory size (largest € first) so the board can stop reading once territories get immaterial. Bigger regions red for the 3rd month are named in brackets — a reference for the CEO↔Sales-Manager meeting."
     }
   },
   "signal_strength": {

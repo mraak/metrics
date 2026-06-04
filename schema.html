@@ -830,6 +830,8 @@ body.dark-theme .rank-tag { color: #777; }
 body.dark-theme .rem-up { color: #8ec85a; } body.dark-theme .rem-again { color: #e0a050; } body.dark-theme .rem-esc { color: #ff6b5e; }
 .ins-list.ceo li { font-size: 13px; line-height: 1.85; color: #333; }
 body.dark-theme .ins-list.ceo li { color: #ccc; }
+.ceo-reds { font-size: 11.5px; color: #888; }
+body.dark-theme .ceo-reds { color: #999; }
 .ins-ceo-none { font-size: 13px; color: #555; padding: 10px 0; max-width: 780px; line-height: 1.6; }
 body.dark-theme .ins-ceo-none { color: #aaa; }
 
@@ -1928,24 +1930,17 @@ function renderRep(terr, rows) {
 }
 
 function renderCeo(allRows) {
-  // Territory-level exec view: a territory escalates if it has BIGGER regions
-  // red 3 months running, or the territory itself is behind plan / deteriorating.
-  const bigEscByTerr = {};
-  allRows.forEach(r => { if (r.escalate && r.mat_rank >= BIG_RANK) bigEscByTerr[r.territory] = (bigEscByTerr[r.territory] || 0) + 1; });
-  const terrs = (insTerr ? insTerr.territories : []).map(t => {
-    const bigEsc = bigEscByTerr[t.territory] || 0;
-    const behind = t.growth_vs_fcst != null && t.growth_vs_fcst <= -5;
-    const deteriorating = t.finding && t.finding !== 'bad_getting_better';
-    // territory-level problem outranks hidden region issues
-    const terrProblem = (deteriorating ? 2 : 0) + (behind ? 1 : 0);
-    return { t, bigEsc, terrProblem, flag: bigEsc > 0 || behind || deteriorating };
-  }).filter(x => x.flag)
-    .sort((a, b) => b.terrProblem - a.terrProblem || b.bigEsc - a.bigEsc || (a.t.growth_vs_fcst ?? 0) - (b.t.growth_vs_fcst ?? 0));
+  // Product × Territory exec view: ALWAYS ordered by territory size (largest
+  // first) so the board can stop reading once territories get immaterial.
+  // Bigger regions red for the 3rd month are named in brackets — a reference
+  // for the CEO's meeting with the Sales Manager.
+  const redByTerr = {};
+  allRows.forEach(r => { if (r.escalate && r.mat_rank >= BIG_RANK) (redByTerr[r.territory] = redByTerr[r.territory] || []).push(r); });
+  const terrs = (insTerr ? insTerr.territories : []).slice().sort((a, b) => b.mat_sales - a.mat_sales);
+  if (!terrs.length) return `<div class="ins-ceo-none">No territory data.</div>`;
 
-  if (!terrs.length) {
-    return `<div class="ins-ceo-none">Nothing requires board attention this month — every territory is growing, on plan, and no major region is unresolved.</div>`;
-  }
-  const items = terrs.map(({ t, bigEsc }) => {
+  const items = terrs.map(t => {
+    const red = redByTerr[t.territory] || [];
     const grow = `${t.growth_py > 0 ? '+' : ''}${t.growth_py}% YoY`;
     const plan = t.growth_vs_fcst == null ? '' :
       (t.growth_vs_fcst >= 0 ? `<span class="fcst-ok">on plan (+${t.growth_vs_fcst}pp)</span>`
@@ -1954,12 +1949,13 @@ function renderCeo(allRows) {
       (t.signal.shape === 'trend' && t.signal.net < 0 ? 'share deteriorating'
         : t.signal.shape === 'unstable' ? 'share volatile'
         : `share ${t.mshare_deviation >= 0 ? '+' : ''}${t.mshare_deviation}pp vs peers`);
-    const esc = bigEsc ? ` <span class="rem-esc">‼ ${bigEsc} bigger region${bigEsc > 1 ? 's' : ''} red for 3rd month</span>` : '';
+    const esc = red.length ? ` <span class="rem-esc">‼ ${red.length} red for 3rd month</span> ` +
+      `<span class="ceo-reds">(${red.map(r => `${r.region} <span class="rank-tag">r${r.mat_rank}</span>`).join(', ')})</span>` : '';
     return `<li><strong>${t.territory}</strong> — €${(t.mat_sales / 1e6).toFixed(1)}M, ${grow}, ${plan}; ${share}.${esc}</li>`;
   }).join('');
-  const escT = terrs.filter(x => x.bigEsc).length;
-  return `<div class="fnd-section">${insData.brand} · territory exec view — ${terrs.length} territor${terrs.length > 1 ? 'ies' : 'y'} need attention` +
-    `${escT ? `, ${escT} with bigger regions unresolved 3 months (‼)` : ''}</div>` +
+  const escT = Object.keys(redByTerr).length;
+  return `<div class="fnd-section">${insData.brand} · territory exec view — largest first` +
+    `${escT ? `, ${escT} with bigger regions red for 3rd month (‼)` : ''}</div>` +
     `<ul class="ins-list ceo">${items}</ul>`;
 }
 </script>
