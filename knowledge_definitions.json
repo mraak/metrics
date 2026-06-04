@@ -163,6 +163,53 @@
       "strength_floor": "moderate",
       "description": "Volatility itself is the finding: high loudness, ~zero coherence (e.g. -10 then +10). Reading a trend into it would be wrong — there is no net direction.",
       "default_action": "Check data quality, demand spikiness, or stocking/ordering noise before treating any single point as a trend."
+    },
+
+    "_market_share_x_fcst": "The five findings below grade market-share-deviation trajectory (level + shape) against RollQ forecast attainment. Combined severity = ms_base(+loudness) + fcst_shortfall, so it rises when BOTH axes are bad and still fires on EITHER. Rank is NOT a trigger (re-enters per persona at Tier 5). Thresholds + implementation: findings.py.",
+    "bad_to_worse": {
+      "label": "Bad → worse",
+      "method": "rule", "impl": "findings.py",
+      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "rule": "level=bad (now < -3pp) AND net < 0 AND |coherence| >= 0.5  (loud clean decline while already below average)  +  FCST severity",
+      "strength_floor": "high",
+      "description": "Below national average and on a clean worsening trend. The most severe market-share finding.",
+      "default_action": "Diagnose and intervene; check account-level orders."
+    },
+    "bad_not_improving": {
+      "label": "Bad & not improving",
+      "method": "rule", "impl": "findings.py",
+      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "rule": "level=bad (now < -3pp) AND not improving (net <= +0.3) AND not a clean steep decline  +  FCST severity",
+      "strength_floor": "moderate",
+      "description": "Stuck below average — drifting or flat, no recovery.",
+      "default_action": "Find what would unstick it; prioritise by FCST gap."
+    },
+    "ok_sudden_drop": {
+      "label": "OK-ish but suddenly deteriorating",
+      "method": "rule", "impl": "findings.py",
+      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "rule": "level=ok (-3pp <= now <= +1pp) AND sudden recent down-break (last step <= -0.8 after a stable prior)  +  FCST severity",
+      "strength_floor": "moderate",
+      "description": "Near average but just broke downward — catch it early.",
+      "default_action": "Investigate the recent break before it compounds."
+    },
+    "good_sudden_drop": {
+      "label": "Good but suddenly deteriorating",
+      "method": "rule", "impl": "findings.py",
+      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "rule": "level=good (now > +1pp) AND sudden recent down-break (last step <= -0.8 after a stable prior)  +  FCST severity",
+      "strength_floor": "moderate",
+      "description": "Above average but a sudden recent drop — a strong position starting to slip.",
+      "default_action": "Protect the position; find the cause of the break."
+    },
+    "bad_getting_better": {
+      "label": "Bad but getting better",
+      "method": "rule", "impl": "findings.py",
+      "requires_signals": ["mshare_dev_mat_step_1m_3m"],
+      "rule": "level=bad (now < -3pp) AND improving (net > +0.3)  +  FCST severity",
+      "strength_floor": "low",
+      "description": "Below average but recovering. Low concern on share; FCST may still flag it.",
+      "default_action": "Keep pushing; confirm the recovery holds."
     }
   },
 

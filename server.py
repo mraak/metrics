@@ -155,6 +155,10 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._send_json(api_meta())
                 if parsed.path == "/api/signals":
                     return self._send_json(api_signals(params))
+                if parsed.path == "/api/findings":
+                    import findings  # lazy: findings.py imports server
+                    brand = params.get("brand", ["Oncleris"])[0]
+                    return self._send_json(findings.find_findings(brand))
                 return self._send_json({"error": "unknown endpoint"}, 404)
             except Exception as e:  # surface errors as JSON for the app
                 return self._send_json({"error": f"{type(e).__name__}: {e}"}, 500)

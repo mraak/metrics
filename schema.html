@@ -770,6 +770,44 @@ body.dark-theme table.sig .grp-start { border-left-color: #283042; }
 body.dark-theme table.sig tr.group-row th { color: #777; border-bottom-color: #1a1f2e; }
 body.dark-theme table.sig th.grp-intrinsic { background: rgba(106,180,216,0.14); color: #6ab4d8; border-left-color: #283042; }
 body.dark-theme table.sig th.grp-extrinsic { background: rgba(245,166,35,0.14); color: #e0a050; border-left-color: #283042; }
+
+/* ── Findings tab ── */
+.seg-group { display: inline-flex; border: 1px solid #ccc; border-radius: 6px; overflow: hidden; }
+body.dark-theme .seg-group { border-color: #444; }
+.seg { background: #fff; border: none; font: inherit; font-size: 12px; padding: 5px 12px; cursor: pointer; color: #666; }
+.seg + .seg { border-left: 1px solid #ddd; }
+body.dark-theme .seg { background: #1a1f2e; color: #aaa; }
+body.dark-theme .seg + .seg { border-left-color: #333; }
+.seg.active { background: #2266aa; color: #fff; }
+body.dark-theme .seg.active { background: #2a4a6a; color: #fff; }
+
+.fnd-chips { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+.fnd-chip { display: flex; align-items: center; gap: 8px; border: 1px solid #e0e0e0; border-radius: 8px; padding: 7px 11px; font-size: 12px; }
+body.dark-theme .fnd-chip { border-color: #1e2232; }
+.fnd-chip .n { font-size: 17px; font-weight: 700; }
+.fnd-chip.zero { opacity: .4; }
+
+.fnd-section { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #999; margin: 6px 0 10px; }
+
+.fpill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.f-bad_to_worse { background: #ffdede; color: #bb2222; }
+.f-bad_not_improving { background: #ffe9cc; color: #aa5500; }
+.f-ok_sudden_drop { background: #fff3cc; color: #9a7700; }
+.f-good_sudden_drop { background: #eadcff; color: #6a3fb0; }
+.f-bad_getting_better { background: #d8f5e3; color: #1a8a55; }
+body.dark-theme .f-bad_to_worse { background: #3a1414; color: #e57368; }
+body.dark-theme .f-bad_not_improving { background: #332010; color: #e0a050; }
+body.dark-theme .f-ok_sudden_drop { background: #2f2a10; color: #d9c24a; }
+body.dark-theme .f-good_sudden_drop { background: #241a38; color: #b48af0; }
+body.dark-theme .f-bad_getting_better { background: #16251a; color: #8ec85a; }
+
+.sevbar { display: inline-block; width: 46px; height: 7px; border-radius: 4px; background: #eee; vertical-align: middle; margin-right: 4px; }
+body.dark-theme .sevbar { background: #1a1f2e; }
+.sevbar > i { display: block; height: 100%; border-radius: 4px; }
+.sev-critical > i { background: #cc3322; } .sev-high > i { background: #cc7711; }
+.sev-moderate > i { background: #caa23a; } .sev-low > i { background: #9bbf6a; }
+.fcst-miss { color: #cc3322; } .fcst-ok { color: #1a8a55; }
+body.dark-theme .fcst-miss { color: #e57368; } body.dark-theme .fcst-ok { color: #8ec85a; }
 table.sig td.num { text-align: right; font-family: 'Menlo', monospace; }
 table.sig tr:hover td { background: #f6f9ff; }
 body.dark-theme table.sig tr:hover td { background: #0e1828; }
@@ -810,6 +848,7 @@ body.dark-theme .rel-high { color: #e0a050; }
 <div class="tabs">
   <button class="tab active" data-tab="schema" onclick="switchTab('schema')">🗂 Schema</button>
   <button class="tab" data-tab="signals" onclick="switchTab('signals')">📈 Signals</button>
+  <button class="tab" data-tab="findings" onclick="switchTab('findings')">🔎 Findings</button>
 </div>
 
 <!-- ── Main ── -->
@@ -1091,6 +1130,27 @@ body.dark-theme .rel-high { color: #e0a050; }
     </div>
   </div>
 
+  <!-- Findings tab -->
+  <div class="tab-panel" id="tab-findings">
+    <div class="signals-wrap">
+      <div class="signals-toolbar">
+        <span><label>Brand</label><select id="fnd-brand" onchange="loadFindings()"></select></span>
+        <span><label>Insight for</label>
+          <span class="seg-group">
+            <button class="seg active" id="seg-manager" onclick="setPersona('manager')">Sales Manager</button>
+            <button class="seg" id="seg-rep" onclick="setPersona('rep')">Sales Rep</button>
+          </span>
+        </span>
+        <span id="fnd-terr-wrap" hidden><label>Territory</label><select id="fnd-territory" onchange="renderFindings()"></select></span>
+        <span class="signals-meta" id="fnd-meta"></span>
+      </div>
+      <div class="signals-body">
+        <div id="fnd-summary"></div>
+        <div id="fnd-results">Loading…</div>
+      </div>
+    </div>
+  </div>
+
 </div><!-- /main -->
 
 <!-- ── Data Modal ── -->
@@ -1335,6 +1395,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p =>
     p.classList.toggle('active', p.id === 'tab-' + name));
   if (name === 'signals' && !signalsInited) initSignals();
+  if (name === 'findings' && !findingsInited) initFindings();
 }
 
 let signalsInited = false;
@@ -1463,6 +1524,118 @@ function sortBy(i) {
   if (sortState.idx === i) sortState.dir *= -1;
   else { sortState.idx = i; sortState.dir = sigCols[i].type === 'str' ? 1 : -1; }
   renderSignals();
+}
+
+/* ── Findings tab ── */
+let findingsInited = false, fndPersona = 'manager', fndData = null;
+
+async function initFindings() {
+  findingsInited = true;
+  if (!META) {
+    try { META = await (await fetch('/api/meta')).json(); }
+    catch (e) {
+      document.getElementById('fnd-results').innerHTML =
+        '<div class="sig-error">No API server. Run <code>python3 server.py</code> and reload.</div>';
+      return;
+    }
+  }
+  const b = document.getElementById('fnd-brand');
+  b.innerHTML = META.brands.map(x => `<option>${x}</option>`).join('');
+  if (META.brands.includes('Oncleris')) b.value = 'Oncleris';
+  loadFindings();
+}
+
+async function loadFindings() {
+  const brand = document.getElementById('fnd-brand').value;
+  const out = document.getElementById('fnd-results');
+  out.textContent = 'Loading…';
+  let data;
+  try { data = await (await fetch('/api/findings?brand=' + encodeURIComponent(brand))).json(); }
+  catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
+  if (data.error) { out.innerHTML = `<div class="sig-error">${data.error}</div>`; return; }
+  fndData = data;
+  document.getElementById('fnd-territory').innerHTML =
+    data.territories.map(t => `<option>${t}</option>`).join('');
+  document.getElementById('fnd-meta').textContent =
+    `${data.brand} · as-of ${data.asof} · ${data.count} findings · market-share × FCST`;
+  renderFindings();
+}
+
+function setPersona(p) {
+  fndPersona = p;
+  document.getElementById('seg-manager').classList.toggle('active', p === 'manager');
+  document.getElementById('seg-rep').classList.toggle('active', p === 'rep');
+  document.getElementById('fnd-terr-wrap').hidden = (p !== 'rep');
+  renderFindings();
+}
+
+function sevBar(sev) {
+  const pct = Math.round(sev.score / 6 * 100);
+  return `<span class="sevbar sev-${sev.band}"><i style="width:${pct}%"></i></span>` +
+         `<span class="rel-${sev.band}">${sev.band}</span> <span class="spark">(${sev.score})</span>`;
+}
+function fpill(r) { return `<span class="fpill f-${r.finding}">${r.label}</span>`; }
+function fcstCell(r) {
+  if (r.fcst_rollq === null) return '—';
+  return r.fcst_meets ? `<span class="fcst-ok">+${r.fcst_rollq}pp</span>`
+                      : `<span class="fcst-miss">${r.fcst_rollq}pp</span>`;
+}
+function summaryChips(rows) {
+  const counts = {}; fndData.summary.forEach(s => counts[s.finding] = 0);
+  rows.forEach(r => counts[r.finding]++);
+  return '<div class="fnd-chips">' + fndData.summary.map(s => {
+    const n = counts[s.finding] || 0;
+    return `<span class="fnd-chip${n ? '' : ' zero'}"><span class="fpill f-${s.finding}">${s.label}</span><span class="n">${n}</span></span>`;
+  }).join('') + '</div>';
+}
+
+function renderFindings() {
+  if (!fndData) return;
+  const out = document.getElementById('fnd-results');
+  const sum = document.getElementById('fnd-summary');
+
+  if (fndPersona === 'manager') {
+    // Less data: a territory rollup to plan the month across all territories.
+    sum.innerHTML = summaryChips(fndData.rows);
+    const by = {};
+    fndData.rows.forEach(r => { (by[r.territory] = by[r.territory] || []).push(r); });
+    const terrs = Object.entries(by).map(([t, rs]) => ({
+      t, n: rs.length,
+      crit: rs.filter(r => r.severity.band === 'critical').length,
+      high: rs.filter(r => r.severity.band === 'high').length,
+      worst: rs.reduce((a, b) => b.severity.score > a.severity.score ? b : a),
+    })).sort((a, b) => b.crit - a.crit || b.high - a.high || b.n - a.n);
+    const head = ['Territory', 'Flagged', 'Critical', 'High', 'Most severe'];
+    const body = terrs.map(x => `<tr>
+      <td>${x.t}</td><td class="num">${x.n}</td>
+      <td class="num">${x.crit ? `<span class="rel-critical">${x.crit}</span>` : '·'}</td>
+      <td class="num">${x.high ? `<span class="rel-high">${x.high}</span>` : '·'}</td>
+      <td>${fpill(x.worst)} <span class="spark">${x.worst.region}</span></td></tr>`).join('');
+    out.innerHTML = `<div class="fnd-section">By territory — where to focus this month (${terrs.length} territories)</div>` +
+      `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+  } else {
+    // More data: full evidence for the rep's own territory.
+    const terr = document.getElementById('fnd-territory').value;
+    const rows = fndData.rows.filter(r => r.territory === terr);
+    sum.innerHTML = summaryChips(rows);
+    const head = ['Severity', 'Finding', 'Region', 'now', 'Trajectory (m3→now)', 'V', 'net', 'ρ', 'shape', 'FCST RollQ'];
+    const body = rows.map(r => {
+      const s = r.strength;
+      return `<tr>
+        <td>${sevBar(r.severity)}</td>
+        <td>${fpill(r)}</td>
+        <td>${r.region}</td>
+        <td class="num">${signed(r.now)}</td>
+        <td class="spark">${fmtSeries(r.series)}</td>
+        <td class="num">${s.magnitude.toFixed(2)}</td>
+        <td class="num">${signed(s.net)}</td>
+        <td class="num">${signed(s.coherence)}</td>
+        <td><span class="pill shape-${s.shape}">${s.shape}</span></td>
+        <td class="num">${fcstCell(r)}</td></tr>`;
+    }).join('') || `<tr><td colspan="10" class="spark">No findings in ${terr}.</td></tr>`;
+    out.innerHTML = `<div class="fnd-section">${terr} — ${rows.length} findings, full detail</div>` +
+      `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+  }
 }
 </script>
 
