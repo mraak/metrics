@@ -1863,6 +1863,15 @@ function summaryChips(data, rows) {
   }).join('') + '</div>';
 }
 
+// Shared column-header tooltips for the findings / insight tables.
+const HDEFS = {
+  'Severity': 'Severity = market-share severity + forecast severity. Market-share = finding base (Bad→worse 3, Bad/Sudden 2, Recovery 1) +1 if very loud (V 2+). Forecast = RollQ shortfall (meeting 0, miss under 15pp 1, 15-25pp 2, 25pp+ 3). Bands: critical 5+, high 3+, moderate 2+, low under 2. The (number) is the score.',
+  'Peer gap': 'Market-share deviation from the peer (national) average, in pp. Negative = below peers.',
+  'Trajectory (m3→now)': 'The market-share gap (mshare_deviation, MAT) at the last four months: 3 months ago, then 2, 1, and now — left to right. Each point is the 12-month rolling deviation from the peer average that month; V / net / ρ are computed from these four points.',
+  'V': SIG_DEFS['V'], 'net': SIG_DEFS['net'], 'ρ': SIG_DEFS['ρ'], 'shape': SIG_DEFS['shape'],
+};
+function th(h) { return HDEFS[h] ? `<th class="has-def" title="${HDEFS[h]}">${h}</th>` : `<th>${h}</th>`; }
+
 // ── Findings tab: objective catalog table ──
 function renderFindings() {
   if (!fndData) return;
@@ -1870,11 +1879,6 @@ function renderFindings() {
   const rows = filter ? fndData.rows.filter(r => r.finding === filter) : fndData.rows;
   document.getElementById('fnd-summary').innerHTML = summaryChips(fndData, fndData.rows);
   const head = ['Severity', 'Finding', 'Territory', 'Region', 'Share', 'Peer gap', 'Trajectory (m3→now)', 'V', 'net', 'ρ', 'shape', 'FCST', 'rank'];
-  const HDEF = {
-    Severity: 'Severity = market-share severity + forecast severity. Market-share = finding base (Bad→worse 3, Bad/Sudden 2, Recovery 1) +1 if very loud (V 2+). Forecast = RollQ shortfall (meeting 0, miss under 15pp 1, 15-25pp 2, 25pp+ 3). Bands: critical 5+, high 3+, moderate 2+, low under 2. The (number) is the score.',
-    'Peer gap': 'Market-share deviation from the peer (national) average, in pp. Negative = below peers.',
-    V: SIG_DEFS['V'], net: SIG_DEFS['net'], 'ρ': SIG_DEFS['ρ'], shape: SIG_DEFS['shape'],
-  };
   const body = rows.map(r => { const s = r.strength; return `<tr>
     <td>${sevBar(r.severity)}</td>
     <td>${fpill(r)}</td>
@@ -1889,8 +1893,7 @@ function renderFindings() {
     <td><span class="pill shape-${s.shape}">${s.shape}</span></td>
     <td class="num">${fcstCell(r)}</td>
     <td class="num">${r.mat_rank}</td></tr>`; }).join('');
-  const thead = head.map(h => HDEF[h]
-    ? `<th class="has-def" title="${HDEF[h]}">${h}</th>` : `<th>${h}</th>`).join('');
+  const thead = head.map(th).join('');
   document.getElementById('fnd-results').innerHTML =
     `<div class="fnd-section">Objective catalog — every flagged region (${rows.length})</div>` +
     `<table class="sig"><thead><tr>${thead}</tr></thead><tbody>${body}</tbody></table>`;
@@ -2045,7 +2048,7 @@ function renderRep(terr, rows) {
     <td class="num">${fcstCell(r)}</td></tr>`; }).join('') ||
     `<tr><td colspan="11" class="spark">No findings in ${terr}.</td></tr>`;
   return `<div class="fnd-section">${terr} — ${rows.length} findings, full detail for the rep’s own patch</div>` +
-    `<table class="sig"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${body}</tbody></table>`;
+    `<table class="sig"><thead><tr>${head.map(th).join('')}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function renderCeo(allRows) {
