@@ -2082,6 +2082,11 @@ function renderNational() {
   const yoy = `<span class="has-def" title="${yoyTip}">YoY</span>`;
   const mom = `<span class="has-def" title="${momTip}">MoM</span>`;
   const msMoM = n.share_series ? +(n.share_series[3] - n.share_series[2]).toFixed(2) : null;
+  const att = n.attainment || {};
+  const attTip = 'True plan attainment = national actual sales ÷ national forecast (a level, not a growth rate). 100% = exactly on plan. This is the only place real attainment is computable — the forecast is national-only.';
+  const attLine = ['MAT', 'YTD', 'RollQ', 'Month'].map(pp => att[pp]
+    ? `${pp} <span class="${att[pp].pct >= 100 ? 'fcst-ok' : 'fcst-miss'}">${att[pp].pct}%</span>` : '')
+    .filter(Boolean).join(' <span class="natl-sep">·</span> ');
   return `<div class="natl-card">
     <div class="natl-title">🌍 ${insData.brand} · National (product) — the big picture</div>
     <div class="natl-row">
@@ -2089,8 +2094,8 @@ function renderNational() {
       <span class="natl-sep">·</span> ${yoy} ${sgn(n.growth_py, '%')}
       <span class="natl-sep">·</span> ${mom} ${sgn(n.growth_pp, '%')}
       <span class="natl-sep">·</span> ${n.market_share}% market share <span class="rank-tag">(MAT)</span>${msMoM != null ? `, ${sgn(msMoM, 'pp')} ${mom}` : ''}
-      <span class="natl-sep">·</span> vs plan ${sgn(n.growth_vs_fcst, 'pp')}
     </div>
+    ${attLine ? `<div class="natl-row" style="margin-top:5px"><span class="has-def" data-tip="${attTip}">Plan attainment</span> <span class="rank-tag">(actual ÷ forecast)</span>: ${attLine}</div>` : ''}
   </div>`;
 }
 
@@ -2116,8 +2121,12 @@ function renderInsights() {
 function renderTerritoryTable(td) {
   if (!td || !td.territories) return '';
   const sgn = (x, suf) => x == null ? '—' : `<span class="${x > 0 ? 'fcst-ok' : x < 0 ? 'fcst-miss' : ''}">${x > 0 ? '+' : ''}${x}${suf}</span>`;
-  const head = ['Territory', 'MAT Sales', 'YoY', 'MoM', 'Share', 'MS dev (vs peers)', 'vs FCST', 'Signal'];
-  const tTips = { 'YoY': 'Year-over-year: the MAT total vs the same period 12 months ago', 'MoM': 'Month-over-month: this month’s MAT total vs last month’s (newest month in, oldest out)' };
+  const head = ['Territory', 'MAT Sales', 'YoY', 'MoM', 'Share', 'MS dev (vs peers)', 'vs plan growth', 'Signal'];
+  const tTips = {
+    'YoY': 'Year-over-year: the MAT total vs the same period 12 months ago',
+    'MoM': 'Month-over-month: this month’s MAT total vs last month’s (newest month in, oldest out)',
+    'vs plan growth': 'INFORMATIVE only (not true attainment): territory YoY growth − the national forecast’s YoY growth, in pp. There is no territory-level forecast, so this is a growth-rate proxy based on prior actuals — positive = growing faster than the plan’s rate. True attainment lives at national level.',
+  };
   const body = td.territories.map(r => {
     const sig = r.signal ? `<span class="pill shape-${r.signal.shape}">${r.signal.shape}</span> ${signed(r.signal.net)}` : '—';
     return `<tr>

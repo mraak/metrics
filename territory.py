@@ -67,7 +67,34 @@ def territory_metrics(brand, asof=None):
     rc = {r['t']: r['n'] for r in con.execute(
         "SELECT territory_name AS t, COUNT(DISTINCT region_name) AS n "
         "FROM region_metrics WHERE brand_name=? GROUP BY territory_name", (brand,))}
+    # national TRUE attainment per period_type: actual ÷ forecast (level, not growth)
+    fcst_m = {r['ym']: r['f'] for r in con.execute(
+        "SELECT f.year_month AS ym, SUM(f.sales_eur) AS f FROM forecast f "
+        "JOIN skus s USING(sku_id) JOIN brands b ON s.brand_id=b.brand_id "
+        "WHERE b.brand_name=? GROUP BY f.year_month", (brand,))}
+    nat_actual = {r['p']: r['s'] for r in con.execute(
+        "SELECT period_type AS p, SUM(sales_eur) AS s FROM region_metrics "
+        "WHERE brand_name=? AND year_month=? GROUP BY period_type", (brand, asof))}
     con.close()
+
+    def _period_fcst(period):
+        if period == 'Month':
+            ms = [asof]
+        elif period == 'RollQ':
+            ms = yms[i - 2:i + 1]
+        elif period == 'MAT':
+            ms = yms[i - 11:i + 1]
+        else:  # YTD
+            ms = [m for m in yms if m[:4] == asof[:4] and m <= asof]
+        vals = [fcst_m.get(m) for m in ms]
+        return sum(vals) if ms and all(v is not None for v in vals) else None
+
+    attainment = {}
+    for period in ('Month', 'RollQ', 'YTD', 'MAT'):
+        act, fc = nat_actual.get(period), _period_fcst(period)
+        if act is not None and fc:
+            attainment[period] = {'actual': round(act), 'fcst': round(fc),
+                                  'pct': round(act / fc * 100, 1)}  # % of plan
 
     # National product summary (no peer level above it yet — franchise comes
     # later — so its market-share "signal" is the national share's own trajectory).
@@ -136,6 +163,8 @@ def territory_metrics(brand, asof=None):
             'severity': sev,
         })
     out.sort(key=lambda x: -x['mat_sales'])
+    if national is not None:
+        national['attainment'] = attainment
     return {'brand': brand, 'asof': asof,
             'national_fcst_growth': None if nat_fcst_growth is None else round(nat_fcst_growth, 1),
             'national': national, 'territories': out}

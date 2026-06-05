@@ -219,9 +219,16 @@ for period_type, (cu, cs, ctu, cts, cspy, cspp, cupy, cupp, cfg, cfg_u) in PERIO
                     on=["year_month", "brand_name"], how="left")
     sub["growth_deviation"] = (sub["growth_py_sales"] - sub["nat_growth"]).round(2)
 
-    # Market share deviation: actual market_share minus national average (per brand × year_month)
-    national_mshare = sub.groupby(["year_month", "brand_name"])["market_share"].transform("mean")
-    sub["mshare_deviation"] = (sub["market_share"] - national_mshare).round(2)
+    # Market share deviation: region market_share minus the brand's VOLUME-WEIGHTED
+    # national market share (= Σ own sales / Σ franchise sales), per brand × year_month.
+    # (Was a simple regional mean; now volume-weighted to match growth_deviation's
+    #  national-growth benchmark, so both peer-relative axes use the same reference.)
+    nat_ms = sub.groupby(["year_month", "brand_name"], as_index=False).agg(
+        _o=("sales_eur", "sum"), _t=("tot_sales_eur", "sum"))
+    nat_ms["nat_ms"] = nat_ms["_o"] / nat_ms["_t"].where(nat_ms["_t"] > 0) * 100
+    sub = sub.merge(nat_ms[["year_month", "brand_name", "nat_ms"]],
+                    on=["year_month", "brand_name"], how="left")
+    sub["mshare_deviation"] = (sub["market_share"] - sub["nat_ms"]).round(2)
 
     # Market share deviation growth: year-over-year and period-over-period changes in deviation
     # Need to track prior values to compute growth
