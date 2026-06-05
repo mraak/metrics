@@ -977,3 +977,115 @@ Present: Signals → Finding → [Insight or silence, per persona]
 - |Gap| >= 1.0pp → Significant
 - 0.5pp <= |Gap| < 1.0pp → Moderate
 - |Gap| < 0.5pp → Aligned
+
+---
+
+## E2E Insight Lineage — Real Example
+
+This traces one real region (BE Burgdorf, Oncleris, MAT 2026-05) from raw signal through Finding to Insight, using actual computed values. It's the canonical illustration of what the five-tier model *actually does*.
+
+### Step 1 — Two Signals (computed on-demand via window functions)
+
+Neither is stored. Both are derived from `region_metrics` at query time using LAG OVER PARTITION BY.
+
+```
+Signal A: mshare_dev_mat_step_1m_3m   (market-share deviation, MAT, last 4 months)
+  series (oldest → now):  [−0.87,  −1.63,  −2.40,  −2.76]  pp vs national average
+  V (magnitude)         = 1.89     total path length
+  net D                 = −1.89    signed displacement
+  ρ (coherence)         = −1.00    perfectly directional — every step the same way
+  shape                 = trend
+
+Signal B: growth_deviation_mat_step_1m_3m   (growth deviation vs national YoY, MAT)
+  series (oldest → now):  [+6.33,  +1.47,  −3.49,  −4.82]  pp vs national growth
+  V (magnitude)         = 11.15    large total path
+  net D                 = −11.15
+  ρ (coherence)         = −1.00    also perfectly directional
+  shape                 = trend
+```
+
+What the signals say: both axes are moving in exactly one direction, no noise, no reversal. This is the strongest possible shape for either signal.
+
+### Step 2 — Finding (composite 2-D signal)
+
+```python
+classify(ms_now=−2.76, gr_now=−4.82)  →  losing_both   # both axes below zero
+
+severity per axis:
+  MS:     below (−2.76<0) +1  |  deteriorating (net<−0.3) +1  |  loud (V≥threshold) +1  =  3/3
+  growth: below (−4.82<0) +1  |  deteriorating             +1  |  loud (V=11pp)      +1  =  3/3
+
+combined score: 6/6 → band = critical
+```
+
+The Finding adds: *this is not just a bad position — both axes are actively, loudly deteriorating at the same time.* That is a different claim from what any single metric says.
+
+### Step 3 — Insight prose (current implementation, Sales Manager persona)
+
+> *BE Burgdorf rank 82 — losing on both: 40.5% market share, running 2.76pp below the peer average, down 0.36 since last month; and under-growing (−4.82pp). [critical]*
+
+**What it uses:** current level (now = −2.76), one-step delta (−0.36 since last month), growth level (−4.82pp). These are data points from the signal series.
+
+**What it does NOT use yet:** V, ρ, shape, the full trajectory arc, the oldest value as contrast. The *signal structure* — the thing that makes this alarming beyond the raw number — is implicit.
+
+---
+
+### Five Ways to Say the Same Insight
+
+The same signal data expressed in five different registers. The "right" one depends on the audience and the moment.
+
+---
+
+**1. Current style — data-point reporting**
+
+> *BE Burgdorf (rank 82) — 40.5% market share, 2.76pp below national average, down 0.36 since last month. Growth deviation −4.82pp. Critical.*
+
+Precise. Verifiable. Reads like a table with words. No sense of motion or urgency. The analyst has to assemble the story themselves.
+
+---
+
+**2. Signal-aware — lets the trajectory speak**
+
+> *BE Burgdorf (rank 82) has been sliding straight down on both axes for three months without a single reversal. Share deviation went from −0.87pp to −2.76pp — a clean, perfectly directional trend (ρ = −1.0). Growth flipped from +6pp above peers to −5pp below: an 11pp swing, also without interruption. Both are deteriorating loudly at the same time. This is not a bad month — it's a pattern.*
+
+Uses: oldest series value as contrast, V, ρ, shape=trend, "without interruption." Explains *why* it's critical, not just *that* it is.
+
+---
+
+**3. Plain business English — what a good sales manager would say at a meeting**
+
+> *Burgdorf is in trouble. Three months ago it was slightly below average on share, but still growing faster than anyone else. Now it's lost share every single month AND flipped from the best-growing region in the territory to one of the worst. That combination — share and growth both falling together, no sign of stabilising — is what makes this critical. Worth a call this week.*
+
+No jargon. Uses the +6pp → −5pp reversal as the story hook. Ends with an action.
+
+---
+
+**4. Executive one-liner — CEO / territory director, large territory view**
+
+> *Burgdorf (rank 82, Bern): losing share AND growth simultaneously for 3 months straight — red, worsening, no bounce. Escalate.*
+
+One breath. Every word earns its place. Severity implied by "3 months / no bounce", not by a number.
+
+---
+
+**5. Rough, rude, and honest — what the data would say if it had no filter**
+
+> *Burgdorf: was the star pupil three months ago (+6pp growth), has since driven straight off a cliff. Share down every month, growth turned negative, ρ = −1 which means it hasn't even had a bad day — just a steady, unbroken descent. If this were a stock you'd have stopped out weeks ago. Whatever is happening there, it is not fixing itself.*
+
+Uses the positive-to-negative arc (+6 → −5) as the dramatic turn. "ρ = −1 / not even a bad day" translates coherence into something visceral. "Would have stopped out" is the kind of sentence a manager actually remembers.
+
+---
+
+### The Design Question This Raises
+
+Styles 1–5 above use the *same underlying data*. The difference is entirely which attributes of the signal get foregrounded in prose:
+
+| Style | Uses level? | Uses trajectory arc? | Uses V/ρ/shape? | Uses contrast (oldest vs now)? |
+|---|---|---|---|---|
+| 1 · Data point | ✓ | Δ1m only | ✗ | ✗ |
+| 2 · Signal-aware | ✓ | ✓ full arc | ✓ explicitly | ✓ |
+| 3 · Plain English | ✓ | ✓ | implicit | ✓ |
+| 4 · Executive | implicit | "3 months straight" | implicit | ✗ |
+| 5 · Rude | ✓ | ✓ | ✓ (ρ named) | ✓ (strongest hook) |
+
+The platform has all these attributes. The prose generator just has to choose how much of the signal structure to surface — and that choice should be **per persona**: a CEO wants style 4, a sales manager wants style 3, an analyst wants style 2, and the model documentation wants style 5 at 2am.
