@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-page: #f4f6f9;
+  --bg-panel: #ffffff;
+  --nav-bg: #1a2030;
+  --text-primary: #1a2030;
+  --text-secondary: #6b7280;
+  --accent: #3b5bdb;
+  --danger: #e03131;
+  --success: #2f9e44;
+  --border: #e2e8f0;
+}
+
+body {
+  background-color: var(--bg-page);
+  color: var(--text-primary);
+}

@@ -1,0 +1,6 @@
+studio.db
+.next/
+node_modules/
+*.local
+.env
+.env.*
