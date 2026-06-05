@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { InsightFraming, FindingDefinition, SignalDefinition, MetaInfo } from '@/lib/types'
+import Tooltip from '@/components/Tooltip'
 
 interface Props {
   initialFramings: InsightFraming[]
@@ -249,12 +250,17 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
           <div className="bg-white rounded-lg border border-[#e2e8f0] shadow-sm">
             <div className="px-6 py-4 border-b border-[#e2e8f0]">
               <h2 className="font-semibold text-[#1a2030]">{selected ? 'Edit Framing' : 'New Framing'}</h2>
+              <p className="text-xs text-[#6b7280] mt-1">
+                An Insight Framing turns a structured Finding into human-readable text for a specific persona.
+                Use {'{{'+'variable}}'} placeholders — they are substituted with live finding data at render time.
+                Same template + same data = identical output every time.
+              </p>
             </div>
             <div className="p-6 space-y-5">
               {/* Persona + Finding key */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Persona *</label>
+                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Persona *<Tooltip text="Who this insight is for. Common values: sales_manager, sales_rep, ceo. Free text — use whatever your system uses. Each persona gets different framings per finding key." /></label>
                   <input
                     type="text"
                     value={draft.persona ?? ''}
@@ -265,7 +271,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                   {errors.persona && <p className="text-xs text-[#e03131] mt-0.5">{errors.persona}</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Finding Key *</label>
+                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Finding Key *<Tooltip text="Which finding classification this framing applies to. Must match a key in a Finding Definition (e.g. 'losing_both', 'star'). One framing per persona × finding key pair." /></label>
                   <select
                     value={draft.finding_key ?? ''}
                     onChange={e => {
@@ -291,7 +297,8 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               {/* Mode toggle */}
               <div>
                 <label className="block text-xs font-medium text-[#6b7280] mb-2">Mode</label>
-                <div className="flex gap-2">
+                {/* Mode-specific tooltip shown below buttons via inline approach */}
+                <div className="flex gap-2 items-center">
                   {(['template', 'llm'] as const).map(m => (
                     <button
                       key={m}
@@ -305,13 +312,14 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                       {m === 'template' ? 'Template' : 'LLM'}
                     </button>
                   ))}
+                  <Tooltip text="Template: pure string substitution, guaranteed identical output. LLM: feed variables into an LLM prompt, near-deterministic at temperature=0. Requires ANTHROPIC_API_KEY." />
                 </div>
               </div>
 
               {/* Template editor */}
               {mode === 'template' && (
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Template</label>
+                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Template<Tooltip text="Write the insight text with {{variable}} placeholders. Example: '{{region}} (rank {{rank}}) is losing on both axes — share {{share_now}}pp vs peers, growth {{growth_now}}pp vs national.'" /></label>
                   <textarea
                     value={draft.template ?? ''}
                     onChange={e => setDraft(d => ({ ...d, template: e.target.value }))}
@@ -363,7 +371,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                   onClick={() => setVarsOpen(o => !o)}
                   className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-[#6b7280] hover:bg-[#f8fafc]"
                 >
-                  <span>Available variables</span>
+                  <span>Available variables<Tooltip text="All {{placeholders}} that can be used in your template or LLM prompt. Identity variables are always available. Per-axis variables depend on which finding definition you run against." /></span>
                   <span>{varsOpen ? '▲' : '▼'}</span>
                 </button>
                 {varsOpen && (
@@ -395,7 +403,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               {/* Surface / suppress conditions */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Surface conditions</label>
+                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Surface conditions<Tooltip text="Optional: only surface this insight when these conditions are true. Leave empty to always surface. Example: severity_band = critical" /></label>
                   <div className="space-y-1 mb-1">
                     {surfaceConditions.map((c, i) => (
                       <div key={i} className="flex items-center gap-1">
@@ -433,7 +441,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Suppress conditions</label>
+                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Suppress conditions<Tooltip text="Optional: suppress this insight when these conditions are true. Example: mat_rank < 40 (suppress for small/immaterial regions)" /></label>
                   <div className="space-y-1 mb-1">
                     {suppressConditions.map((c, i) => (
                       <div key={i} className="flex items-center gap-1">
@@ -475,7 +483,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               {/* Finding def + brand for preview */}
               <div className="flex items-end gap-4 flex-wrap">
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Finding definition (for preview)</label>
+                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Finding definition (for preview)<Tooltip text="Which finding definition to run when generating the preview. This determines which axes are available as {{variables}}." /></label>
                   <select
                     value={selectedFindingDefId}
                     onChange={e => setSelectedFindingDefId(e.target.value)}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { FindingDefinition, SignalDefinition, AxisDefinition, ClassificationRule, SeverityConfig, FindingRow, MetaInfo } from '@/lib/types'
+import Tooltip from '@/components/Tooltip'
 
 interface Props {
   initialFindings: FindingDefinition[]
@@ -267,12 +268,17 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
           <div className="bg-white rounded-lg border border-[#e2e8f0] shadow-sm">
             <div className="px-6 py-4 border-b border-[#e2e8f0]">
               <h2 className="font-semibold text-[#1a2030]">{selected ? 'Edit Finding' : 'New Finding'}</h2>
+              <p className="text-xs text-[#6b7280] mt-1">
+                A Finding composes N signals into one N-dimensional point. Each axis is one signal; the
+                classification rules define which combination of &quot;good/bad&quot; axes maps to which finding label.
+                Severity = sum of per-axis severities (each 0–3).
+              </p>
             </div>
             <div className="p-6 space-y-5">
               {/* Basic fields */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Name *</label>
+                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Name *<Tooltip text="Unique identifier for this finding definition. Example: `share_growth_quadrant`" /></label>
                   <input
                     type="text"
                     value={draft.name ?? ''}
@@ -282,7 +288,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                   {errors.name && <p className="text-xs text-[#e03131] mt-0.5">{errors.name}</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Label *</label>
+                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Label *<Tooltip text="Display name. Example: 'Share × Growth Quadrant'" /></label>
                   <input
                     type="text"
                     value={draft.label ?? ''}
@@ -296,7 +302,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
               {/* Axes section */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-[#6b7280]">Axes</label>
+                  <label className="text-xs font-medium text-[#6b7280]">Axes<Tooltip text="Each axis is one signal. The finding engine fetches signal data for all axes and joins by region. For a 2-axis finding you get 2² = 4 quadrant combinations; for 3 axes, 2³ = 8 octants." /></label>
                   {axes.length < 6 && (
                     <button
                       onClick={addAxis}
@@ -313,7 +319,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                       <div className="flex-1 grid grid-cols-4 gap-2">
                         {/* Signal */}
                         <div>
-                          <label className="block text-xs text-[#6b7280] mb-0.5">Signal</label>
+                          <label className="block text-xs text-[#6b7280] mb-0.5">Signal<Tooltip text="The signal whose current value defines this axis. Uses the signal definition to fetch series + strength." /></label>
                           <select
                             value={axis.signal_id}
                             onChange={e => {
@@ -333,7 +339,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                         </div>
                         {/* Axis name */}
                         <div>
-                          <label className="block text-xs text-[#6b7280] mb-0.5">Axis name</label>
+                          <label className="block text-xs text-[#6b7280] mb-0.5">Axis name<Tooltip text="Short identifier used in {{variable}} templates. Example: 'share' → {{share_now}}, {{share_shape}}, etc." /></label>
                           <input
                             type="text"
                             value={axis.name}
@@ -343,7 +349,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                         </div>
                         {/* Good direction */}
                         <div>
-                          <label className="block text-xs text-[#6b7280] mb-0.5">Good direction</label>
+                          <label className="block text-xs text-[#6b7280] mb-0.5">Good direction<Tooltip text="Which side of the threshold is 'good'. Positive = above threshold is good (e.g. market share above average). Negative = below threshold is good (e.g. cost below budget)." /></label>
                           <select
                             value={axis.good_direction}
                             onChange={e => updateAxis(idx, { good_direction: e.target.value as 'positive' | 'negative' })}
@@ -355,7 +361,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                         </div>
                         {/* Threshold */}
                         <div>
-                          <label className="block text-xs text-[#6b7280] mb-0.5">Threshold</label>
+                          <label className="block text-xs text-[#6b7280] mb-0.5">Threshold<Tooltip text="The dividing line between 'good' and 'bad'. Default 0 = peer average for deviation signals. Adjust if you want to flag only regions more than X pp below peers." /></label>
                           <input
                             type="number"
                             step="0.1"
@@ -381,7 +387,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
               {classifications.length > 0 && (
                 <div>
                   <label className="block text-xs font-medium text-[#6b7280] mb-2">
-                    Classifications ({classifications.length} combinations from {axes.length} axes)
+                    Classifications ({classifications.length} combinations from {axes.length} axes)<Tooltip text="Auto-generated from axes — one combination per possible good/bad assignment across all axes. Edit the labels to match business meaning. The key is used in insight templates and the catalog." />
                   </label>
                   <div className="space-y-1">
                     {classifications.map(c => (
@@ -415,7 +421,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                 <label className="block text-xs font-medium text-[#6b7280] mb-2">Severity Configuration</label>
                 <div className="grid grid-cols-4 gap-3">
                   <div>
-                    <label className="block text-xs text-[#6b7280] mb-0.5">Deterioration delta</label>
+                    <label className="block text-xs text-[#6b7280] mb-0.5">Deterioration delta<Tooltip text="A signal axis is 'deteriorating' if its net displacement (D = now − start) is worse than −threshold. For position signals try 0.3pp; for growth signals try 2pp." /></label>
                     <input
                       type="number"
                       step="0.1"
@@ -428,7 +434,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-[#6b7280] mb-0.5">Critical threshold</label>
+                    <label className="block text-xs text-[#6b7280] mb-0.5">Critical threshold<Tooltip text="Severity score bands. Score = sum of per-axis severities (each 0–3, so max = 3 × axes). Critical fires when score ≥ this value." /></label>
                     <input
                       type="number"
                       value={severity.bands.critical}
@@ -440,7 +446,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-[#6b7280] mb-0.5">High threshold</label>
+                    <label className="block text-xs text-[#6b7280] mb-0.5">High threshold<Tooltip text="Severity score bands. Score = sum of per-axis severities (each 0–3, so max = 3 × axes). High fires when score ≥ this value." /></label>
                     <input
                       type="number"
                       value={severity.bands.high}
@@ -452,7 +458,7 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-[#6b7280] mb-0.5">Moderate threshold</label>
+                    <label className="block text-xs text-[#6b7280] mb-0.5">Moderate threshold<Tooltip text="Severity score bands. Score = sum of per-axis severities (each 0–3, so max = 3 × axes). Moderate fires when score ≥ this value." /></label>
                     <input
                       type="number"
                       value={severity.bands.moderate}

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import type { SignalDefinition, SignalRow, MetaInfo } from '@/lib/types'
+import Tooltip from '@/components/Tooltip'
 
 interface Props {
   initialSignals: SignalDefinition[]
@@ -237,11 +238,15 @@ export default function SignalStudio({ initialSignals }: Props) {
               <h2 className="font-semibold text-[#1a2030]">
                 {selected ? 'Edit Signal' : 'New Signal'}
               </h2>
+              <p className="text-xs text-[#6b7280] mt-1">
+                A Signal is a comparative metric watched over time — it adds trajectory to a data point.
+                Define the metric, period, and how far back to look, then preview against any brand.
+              </p>
             </div>
             <div className="p-6 grid grid-cols-2 gap-4">
               {/* Name */}
               <div className="col-span-1">
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Name *</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Name *<Tooltip text="Unique identifier used in code and config. Use snake_case. Example: `mshare_dev_mat_step_1m_3m`" /></label>
                 <input
                   type="text"
                   value={draft.name ?? ''}
@@ -254,7 +259,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Label */}
               <div className="col-span-1">
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Label *</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Label *<Tooltip text="Human-readable display name shown in the UI. Example: 'Market Share Deviation (MAT, −1m/−3m)'" /></label>
                 <input
                   type="text"
                   value={draft.label ?? ''}
@@ -267,7 +272,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Metric */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Metric *</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Metric *<Tooltip text="The column from `region_metrics` to track over time. Must be a numeric column. This is the raw comparative metric (Tier 2) that becomes a Signal (Tier 3) when watched over time." /></label>
                 <select
                   value={draft.metric ?? ''}
                   onChange={e => setDraft(d => ({ ...d, metric: e.target.value }))}
@@ -281,7 +286,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Period type */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Period Type *</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Period Type *<Tooltip text="Which aggregation window to use. MAT = Moving Annual Total (12-month rolling sum). RollQ = Rolling Quarter. YTD = Year to Date. Month = single calendar month. MAT is the most stable for signal analysis." /></label>
                 <select
                   value={draft.period_type ?? 'MAT'}
                   onChange={e => setDraft(d => ({ ...d, period_type: e.target.value }))}
@@ -293,7 +298,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Lags */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Lags * (min 2)</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Lags * (min 2)<Tooltip text="How many months back to look. Lag 0 = now, lag 1 = last month, lag 3 = 3 months ago. The series will be [lag_max → lag_0] (oldest to now). Minimum 2 lags to compute any delta." /></label>
                 <div className="flex flex-wrap gap-2">
                   {ALL_LAGS.map(lag => (
                     <label key={lag} className="flex items-center gap-1 cursor-pointer">
@@ -312,7 +317,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Delta lags */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Delta Lags</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Delta Lags<Tooltip text="Which step-deltas to compute and display. Delta 1m = now minus last month. Delta 3m = now minus 3 months ago. These appear as columns in the preview table." /></label>
                 <div className="flex flex-wrap gap-2">
                   {ALL_LAGS.filter(l => l > 0 && selectedLags.includes(l)).map(lag => (
                     <label key={lag} className="flex items-center gap-1 cursor-pointer">
@@ -333,7 +338,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Direction */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Direction *</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Direction *<Tooltip text="Which direction is 'good' for this metric. For market share deviation: higher is better (positive = above peers). For cost deviation: lower is better." /></label>
                 <select
                   value={draft.direction ?? 'higher_is_better'}
                   onChange={e => setDraft(d => ({ ...d, direction: e.target.value as SignalDefinition['direction'] }))}
@@ -345,7 +350,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Strength kind */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Strength Kind *</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Strength Kind *<Tooltip text="Affects the loudness threshold interpretation. 'Position' = share-deviation-style metrics (measured in pp, typically small numbers). 'Growth' = growth-rate metrics (measured in %, typically larger numbers)." /></label>
                 <select
                   value={draft.strength_kind ?? 'position'}
                   onChange={e => setDraft(d => ({ ...d, strength_kind: e.target.value as SignalDefinition['strength_kind'] }))}
@@ -357,7 +362,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Loud threshold */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Loud Threshold</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Loud Threshold<Tooltip text="Minimum magnitude (V = Σ|step deltas|) for a signal to be considered 'loud' when computing severity. Position signals: try 2.0pp. Growth signals: try 10pp. A signal below this threshold won't trigger the +1 'loud' severity bonus." /></label>
                 <input
                   type="number"
                   step="0.1"
@@ -369,7 +374,7 @@ export default function SignalStudio({ initialSignals }: Props) {
 
               {/* Brand selector */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-1">Brand *</label>
+                <label className="block text-xs font-medium text-[#6b7280] mb-1">Brand *<Tooltip text="Which brand to run the preview against. Doesn't affect the saved signal definition — it's only for preview." /></label>
                 <select
                   value={brand}
                   onChange={e => setBrand(e.target.value)}
