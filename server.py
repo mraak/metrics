@@ -172,6 +172,7 @@ def api_trails(params):
         rows = con.execute("""
             WITH s AS (
               SELECT region_name, territory_name, year_month, rank_sales_eur AS rk,
+                market_share AS msh, units AS un, growth_py_sales AS gpy,
                 mshare_deviation AS x0, LAG(mshare_deviation,1) OVER w AS x1,
                 LAG(mshare_deviation,2) OVER w AS x2, LAG(mshare_deviation,3) OVER w AS x3,
                 growth_deviation AS y0, LAG(growth_deviation,1) OVER w AS y1,
@@ -186,7 +187,12 @@ def api_trails(params):
         con.close()
     rnd = lambda v: round(v, 2)
     # each trail point: [mshare_dev, growth_dev, sales_eur]  (oldest -> now)
+    # z: candidate third axes for the 3-D view (visualisation only, not findings)
     out = [{"region": r["region_name"], "territory": r["territory_name"], "rank": r["rk"],
+            "z": {"rank": r["rk"],
+                  "share": None if r["msh"] is None else rnd(r["msh"]),
+                  "units": None if r["un"] is None else round(r["un"]),
+                  "growth": None if r["gpy"] is None else rnd(r["gpy"])},
             "trail": [[rnd(r["x3"]), rnd(r["y3"]), round(r["s3"])],
                       [rnd(r["x2"]), rnd(r["y2"]), round(r["s2"])],
                       [rnd(r["x1"]), rnd(r["y1"]), round(r["s1"])],

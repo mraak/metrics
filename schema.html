@@ -923,6 +923,22 @@ body.dark-theme .scatter .dot.sel { stroke: #fff; }
 .trail-hint { font-size: 12px; color: #888; margin-top: 14px; }
 body.dark-theme .trail-hint { color: #777; }
 
+/* 3-D scatter (visualisation only) */
+.scatter3d { width: 100%; height: auto; background: #fafbfc; border: 1px solid #e8e8e8; border-radius: 8px; cursor: grab; user-select: none; touch-action: none; }
+.scatter3d:active { cursor: grabbing; }
+body.dark-theme .scatter3d { background: #0d0f14; border-color: #1e2232; }
+.scatter3d .dot { cursor: default; stroke: #fff; stroke-width: 0.5; }
+body.dark-theme .scatter3d .dot { stroke: #0d0f14; }
+.scatter3d .dot:hover { stroke: #333; }
+.scatter3d .c3-edge { stroke: #e3e8ee; stroke-width: 1; }
+body.dark-theme .scatter3d .c3-edge { stroke: #1b2130; }
+.scatter3d .c3-axis { stroke: #b3bcc7; stroke-width: 1.2; }
+body.dark-theme .scatter3d .c3-axis { stroke: #38425a; }
+.scatter3d .c3-lbl { font-size: 10px; font-weight: 600; fill: #8a93a0; }
+.c3-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 2px; font-size: 12px; }
+.c3-bar select { font: inherit; padding: 2px 6px; border-radius: 5px; border: 1px solid #cdd4dc; background: #fff; }
+body.dark-theme .c3-bar select { background: #161a24; color: #dfe5ee; border-color: #2a3242; }
+
 /* custom hover tooltip (reliable replacement for native title) */
 #tt {
   position: fixed; z-index: 5000; max-width: 340px;
@@ -1272,6 +1288,7 @@ body.dark-theme .trail-hint { color: #777; }
         <div id="sig-results">Loading…</div>
         <div id="sig-scatter"></div>
         <div id="sig-trails"></div>
+        <div id="sig-3d"></div>
       </div>
     </div>
   </div>
@@ -1693,6 +1710,7 @@ async function loadScatter(brand) {
   quadView = { x: 0, y: 0, w: QW, h: QH };   // reset zoom on new brand
   el.innerHTML = renderScatter(d);
   renderTrails();
+  render3D();
   applyQuadView();
 }
 
@@ -1737,6 +1755,99 @@ function renderTrails() {
   el.innerHTML = `<div class="scatter-wrap"><div class="fnd-section">Trajectories — −3m (faint) → now (solid). ${legend}</div>` +
     `<svg viewBox="0 0 ${QW} ${QH}" class="scatter">${quadAxes()}${body}</svg></div>`;
 }
+
+// ── 3-D scatter (visualisation only — never feeds findings) ──────────────
+// x = share dev, y = growth dev, z = a chosen third signal. Rotatable.
+const C3 = { w: 860, h: 430, cx: 430, cy: 220, H: 125 };
+const Z3 = {
+  rank:   { label: 'Sales rank (1–100)',   fmt: v => v,                       unit: '' },
+  share:  { label: 'Market share (level)', fmt: v => v + '%',                 unit: 'pp' },
+  units:  { label: 'Units (MAT volume)',   fmt: v => v.toLocaleString(),      unit: '' },
+  growth: { label: 'YoY growth %',         fmt: v => (v > 0 ? '+' : '') + v,  unit: '%' },
+};
+let z3key = 'rank', rot3 = { yaw: -0.62, pitch: 0.42 }, drag3 = null;
+
+function project3(x, y, z) {
+  const cy = Math.cos(rot3.yaw), sy = Math.sin(rot3.yaw),
+        cp = Math.cos(rot3.pitch), sp = Math.sin(rot3.pitch);
+  const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = y;
+  const y2 = y1 * cp - z1 * sp, z2 = y1 * sp + z1 * cp;
+  return { sx: C3.cx + x1, sy: C3.cy - y2, depth: z2 };
+}
+
+function set3DZ(k) { z3key = k; draw3D(); }
+
+function render3D() {
+  const el = document.getElementById('sig-3d');
+  if (!scatterData || !scatterData.points.length || !scatterData.points[0].z) { el.innerHTML = ''; return; }
+  const opts = Object.keys(Z3).map(k =>
+    `<option value="${k}"${k === z3key ? ' selected' : ''}>${Z3[k].label}</option>`).join('');
+  el.innerHTML = `<div class="scatter-wrap">
+    <div class="fnd-section">3-D view — <b>visualisation only, not used to generate findings</b>. The two finding axes (share × growth) plus a third signal you pick. Drag to rotate · dot size = sales volume.</div>
+    <div class="c3-bar">Third axis (Z):
+      <select onchange="set3DZ(this.value)">${opts}</select></div>
+    <svg id="c3-svg" viewBox="0 0 ${C3.w} ${C3.h}" class="scatter3d"></svg>
+  </div>`;
+  draw3D();
+}
+
+function draw3D() {
+  const svg = document.getElementById('c3-svg');
+  if (!svg || !scatterData) return;
+  const H = C3.H;
+  const pts0 = scatterData.points.filter(p => p.z && p.z[z3key] != null);
+  const zs = pts0.map(p => p.z[z3key]);
+  const zmin = Math.min(...zs), zmax = Math.max(...zs), zspan = (zmax - zmin) || 1;
+  const nx = v => Math.max(-15, Math.min(15, v)) / 15 * H;
+  const nz = v => ((v - zmin) / zspan * 2 - 1) * H;   // chosen Z mapped to [-H,H]
+
+  const seg = [];
+  const line = (a, b, cls) => { const p = project3(...a), q = project3(...b);
+    seg.push(`<line class="${cls}" x1="${p.sx.toFixed(1)}" y1="${p.sy.toFixed(1)}" x2="${q.sx.toFixed(1)}" y2="${q.sy.toFixed(1)}"/>`); };
+  const c = [-H, H];
+  for (const a of c) for (const b of c) {                 // bounding cube (depth cue)
+    line([-H, a, b], [H, a, b], 'c3-edge');
+    line([a, -H, b], [a, H, b], 'c3-edge');
+    line([a, b, -H], [a, b, H], 'c3-edge');
+  }
+  line([-H, 0, 0], [H, 0, 0], 'c3-axis');                // axes through origin
+  line([0, -H, 0], [0, H, 0], 'c3-axis');
+  line([0, 0, -H], [0, 0, H], 'c3-axis');
+  const lbl = (a, t, anc) => { const p = project3(...a);
+    return `<text class="c3-lbl" x="${p.sx.toFixed(1)}" y="${p.sy.toFixed(1)}" text-anchor="${anc || 'middle'}">${t}</text>`; };
+  const labels = lbl([H + 16, 0, 0], 'share dev →', 'start')
+    + lbl([0, H + 14, 0], '↑ growth dev')
+    + lbl([0, 0, H + 16], Z3[z3key].label + ' ↗')
+    + lbl([0, 0, -H - 8], '↙ low ' + z3key);
+
+  const proj = pts0.map(p => {
+    const [x, y, s] = p.trail[3];
+    return { p, x, y, s, pr: project3(nx(x), nx(y), nz(p.z[z3key])) };
+  }).sort((a, b) => a.pr.depth - b.pr.depth);            // back to front
+  const dmin = Math.min(...proj.map(o => o.pr.depth)), dmax = Math.max(...proj.map(o => o.pr.depth)) || 1;
+  const dots = proj.map(o => {
+    const cls = (o.x >= 0 && o.y >= 0) ? 'q-star' : (o.x < 0 && o.y < 0) ? 'q-prob' : 'q-mixed';
+    const t = dmax > dmin ? (o.pr.depth - dmin) / (dmax - dmin) : 1;
+    const tip = `${o.p.region} · ${o.p.territory} — MS dev ${o.x > 0 ? '+' : ''}${o.x}pp · growth dev ${o.y > 0 ? '+' : ''}${o.y}pp · ${Z3[z3key].label}: ${Z3[z3key].fmt(o.p.z[z3key])} · €${(o.s / 1e6).toFixed(2)}M`;
+    return `<circle class="dot ${cls}" cx="${o.pr.sx.toFixed(1)}" cy="${o.pr.sy.toFixed(1)}" r="${dotR(o.s)}" opacity="${(0.4 + t * 0.55).toFixed(2)}" data-tip="${tip}"></circle>`;
+  }).join('');
+  svg.innerHTML = seg.join('') + labels + dots;
+}
+
+// drag-to-rotate (handlers are global; only act on the 3-D svg)
+document.addEventListener('mousedown', e => {
+  const svg = e.target.closest && e.target.closest('svg.scatter3d');
+  if (!svg) return;
+  drag3 = { x: e.clientX, y: e.clientY }; e.preventDefault();
+});
+document.addEventListener('mousemove', e => {
+  if (!drag3) return;
+  rot3.yaw += (e.clientX - drag3.x) * 0.008;
+  rot3.pitch = Math.max(-1.3, Math.min(1.3, rot3.pitch + (e.clientY - drag3.y) * 0.008));
+  drag3 = { x: e.clientX, y: e.clientY };
+  draw3D();
+});
+document.addEventListener('mouseup', () => { drag3 = null; });
 
 function renderSignals() {
   const out = document.getElementById('sig-results');
