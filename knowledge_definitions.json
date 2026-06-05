@@ -143,6 +143,25 @@
       "direction": "higher_is_better",
       "interpretation": "Period-over-period change in market-share deviation. NOTE: a 'growth-of-growth' column — the comparison's own change is already baked into region_metrics, so this template reads a single column rather than lagging.",
       "cached_as": "growth_pp_mshare_dev"
+    },
+    "growth_deviation_rollq_step1m_3m": {
+      "metric": "growth_deviation",
+      "period_type": "RollQ",
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "readout": "delta",
+      "delta_lags": [
+        1,
+        3
+      ],
+      "direction": "higher_is_better",
+      "strength_kind": "growth",
+      "materiality_from": "rank_sales_eur",
+      "interpretation": "Region's YoY sales growth minus the brand's national YoY growth (PY) — is the region out-growing or under-growing the brand overall, and is that gap widening? Growth-momentum companion to mshare_deviation. NOTE: on RollQ (not MAT) only because MAT YoY needs ~3 years of history; with real multi-year data this moves to MAT to match mshare_deviation."
     }
   },
   "finding_recipes": {

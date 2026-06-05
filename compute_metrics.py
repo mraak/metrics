@@ -208,6 +208,17 @@ for period_type, (cu, cs, ctu, cts, cspy, cspp, cupy, cupp, cfg, cfg_u) in PERIO
     sub["growth_vs_fcst_eur"]  = (sub["growth_py_sales"] - sub["fcst_growth_py"]).round(2)
     sub["growth_vs_fcst_units"] = (sub["growth_py_units"] - sub["fcst_growth_py_u"]).round(2)
 
+    # Growth deviation: region YoY (PY) growth minus the brand's VOLUME-WEIGHTED
+    # national YoY growth (per brand × year_month). Peer-relative growth momentum,
+    # the companion to mshare_deviation (note: mshare_deviation above uses a simple
+    # regional mean as its benchmark — references differ; reconcile if desired).
+    nat_g = sub.groupby(["year_month", "brand_name"], as_index=False).agg(
+        _ns=("sales_eur", "sum"), _nspy=("prev_s_py", "sum"))
+    nat_g["nat_growth"] = (nat_g["_ns"] - nat_g["_nspy"]) / nat_g["_nspy"].where(nat_g["_nspy"] > 0) * 100
+    sub = sub.merge(nat_g[["year_month", "brand_name", "nat_growth"]],
+                    on=["year_month", "brand_name"], how="left")
+    sub["growth_deviation"] = (sub["growth_py_sales"] - sub["nat_growth"]).round(2)
+
     # Market share deviation: actual market_share minus national average (per brand × year_month)
     national_mshare = sub.groupby(["year_month", "brand_name"])["market_share"].transform("mean")
     sub["mshare_deviation"] = (sub["market_share"] - national_mshare).round(2)
@@ -229,7 +240,7 @@ for period_type, (cu, cs, ctu, cts, cspy, cspp, cupy, cupp, cfg, cfg_u) in PERIO
     keep = ID + ["period_type", "units", "sales_eur", "market_share", "mshare_deviation",
                  "growth_py_sales", "growth_pp_sales",
                  "growth_py_units", "growth_pp_units",
-                 "growth_vs_fcst_eur", "growth_vs_fcst_units",
+                 "growth_vs_fcst_eur", "growth_vs_fcst_units", "growth_deviation",
                  "growth_py_mshare_dev", "growth_pp_mshare_dev"]
     chunks.append(sub[keep])
 

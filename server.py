@@ -133,6 +133,32 @@ def api_signals(params):
             "sql": display_sql, "rows": out}
 
 
+def api_scatter(params):
+    """Per-region snapshot of the two peer-relative deviations (MAT, current)
+    for the share x growth quadrant plot."""
+    con = _conn()
+    try:
+        brand = params.get("brand", [None])[0]
+        if not brand:
+            brand = con.execute("SELECT DISTINCT brand_name FROM region_metrics "
+                                "ORDER BY brand_name LIMIT 1").fetchone()[0]
+        period = params.get("period", ["MAT"])[0]
+        asof = params.get("asof", [None])[0] or con.execute(
+            "SELECT MAX(year_month) FROM region_metrics").fetchone()[0]
+        rows = con.execute("""
+            SELECT region_name, territory_name, mshare_deviation, growth_deviation, rank_sales_eur
+            FROM region_metrics
+            WHERE brand_name=? AND period_type=? AND year_month=?
+              AND mshare_deviation IS NOT NULL AND growth_deviation IS NOT NULL
+        """, (brand, period, asof)).fetchall()
+    finally:
+        con.close()
+    pts = [{"region": r["region_name"], "territory": r["territory_name"],
+            "x": round(r["mshare_deviation"], 2), "y": round(r["growth_deviation"], 2),
+            "rank": r["rank_sales_eur"]} for r in rows]
+    return {"brand": brand, "period": period, "asof": asof, "points": pts}
+
+
 def api_knowledge():
     """Expose the relevant Knowledge Definitions for the app's 'behind the
     scenes' views: signal interpretations, finding recipes, insight framings."""
@@ -179,6 +205,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._send_json(api_signals(params))
                 if parsed.path == "/api/knowledge":
                     return self._send_json(api_knowledge())
+                if parsed.path == "/api/scatter":
+                    return self._send_json(api_scatter(params))
                 if parsed.path == "/api/findings":
                     import findings  # lazy: findings.py imports server
                     brand = params.get("brand", ["Oncleris"])[0]
