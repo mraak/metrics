@@ -938,6 +938,11 @@ body.dark-theme .scatter3d .c3-axis { stroke: #38425a; }
 .c3-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 2px; font-size: 12px; }
 .c3-bar select { font: inherit; padding: 2px 6px; border-radius: 5px; border: 1px solid #cdd4dc; background: #fff; }
 body.dark-theme .c3-bar select { background: #161a24; color: #dfe5ee; border-color: #2a3242; }
+.c3-btn { font: inherit; font-size: 12px; padding: 2px 9px; border-radius: 5px; border: 1px solid #cdd4dc; background: #fff; cursor: pointer; }
+.c3-btn:hover { background: #eef2f7; border-color: #b6c0cc; }
+body.dark-theme .c3-btn { background: #161a24; color: #dfe5ee; border-color: #2a3242; }
+body.dark-theme .c3-btn:hover { background: #1d2330; }
+.c3-count { font-size: 11px; color: #8a93a0; margin-left: auto; }
 
 /* custom hover tooltip (reliable replacement for native title) */
 #tt {
@@ -1730,13 +1735,17 @@ function renderScatter(d) {
 function toggleTrail(i) { selectRegion(scatterData.points[i].region); }
 
 // shared selection across the 2-D scatter, 2-D trails and the 3-D view
-function selectRegion(reg) {
-  if (trailSel.has(reg)) trailSel.delete(reg); else trailSel.add(reg);
+function refreshSel() {
   document.getElementById('sig-scatter').innerHTML = renderScatter(scatterData);
   renderTrails();
   draw3D();
   applyQuadView();
 }
+function selectRegion(reg) {
+  if (trailSel.has(reg)) trailSel.delete(reg); else trailSel.add(reg);
+  refreshSel();
+}
+function clearSel3() { if (trailSel.size) { trailSel.clear(); refreshSel(); } }
 const esc3 = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
 function renderTrails() {
@@ -1771,16 +1780,20 @@ const Z3 = {
 };
 const R3 = 5;        // uniform dot radius in 3-D space (size carries no meaning here)
 let z3key = 'rank', rot3 = { yaw: -0.62, pitch: 0.42 }, drag3 = null;
+let zoom3 = 1, show3 = 'all';   // 'all' | 'selected'
+const ROT0 = { yaw: -0.62, pitch: 0.42 };
 
 function project3(x, y, z) {
   const cy = Math.cos(rot3.yaw), sy = Math.sin(rot3.yaw),
         cp = Math.cos(rot3.pitch), sp = Math.sin(rot3.pitch);
   const x1 = x * cy + z * sy, z1 = -x * sy + z * cy, y1 = y;
   const y2 = y1 * cp - z1 * sp, z2 = y1 * sp + z1 * cp;
-  return { sx: C3.cx + x1, sy: C3.cy - y2, depth: z2 };
+  return { sx: C3.cx + x1 * zoom3, sy: C3.cy - y2 * zoom3, depth: z2 };
 }
 
 function set3DZ(k) { z3key = k; draw3D(); }
+function reset3D() { zoom3 = 1; rot3 = { ...ROT0 }; draw3D(); }
+function toggle3Show() { show3 = show3 === 'all' ? 'selected' : 'all'; render3D(); }
 const zNow = p => (p.z && p.z[z3key]) ? p.z[z3key][3] : null;
 
 function render3D() {
@@ -1789,9 +1802,12 @@ function render3D() {
   const opts = Object.keys(Z3).map(k =>
     `<option value="${k}"${k === z3key ? ' selected' : ''}>${Z3[k].label}</option>`).join('');
   el.innerHTML = `<div class="scatter-wrap">
-    <div class="fnd-section">3-D view — <b>visualisation only, not used to generate findings</b>. The two finding axes (share × growth) plus a third signal you pick. Drag to rotate · <b>click dots to select</b> and trace them through time (−3m faint → now solid) · dots are uniform size here.</div>
+    <div class="fnd-section">3-D view — <b>visualisation only, not used to generate findings</b>. The two finding axes (share × growth) plus a third signal you pick. Drag to rotate · scroll to zoom · double-click to reset · <b>click dots to select</b> and trace them through time (−3m faint → now solid) · dots are uniform size here.</div>
     <div class="c3-bar">Third axis (Z):
-      <select onchange="set3DZ(this.value)">${opts}</select></div>
+      <select onchange="set3DZ(this.value)">${opts}</select>
+      <button class="c3-btn" onclick="toggle3Show()">${show3 === 'all' ? 'Show selected only' : 'Show all'}</button>
+      <button class="c3-btn" onclick="clearSel3()">Clear selection</button>
+      <span class="c3-count"></span></div>
     <svg id="c3-svg" viewBox="0 0 ${C3.w} ${C3.h}" class="scatter3d"></svg>
   </div>`;
   draw3D();
@@ -1826,8 +1842,10 @@ function draw3D() {
     + lbl([0, 0, H + 16], Z3[z3key].label + ' ↗')
     + lbl([0, 0, -H - 8], '↙ low ' + z3key);
 
-  // static dots (selected ones are drawn by their trail instead), back-to-front
-  const proj = pts0.filter(p => !trailSel.has(p.region)).map(p => {
+  // static dots (selected ones are drawn by their trail instead), back-to-front.
+  // In 'selected' mode, hide the static cloud entirely — only traces remain.
+  const base = show3 === 'selected' ? [] : pts0.filter(p => !trailSel.has(p.region));
+  const proj = base.map(p => {
     const [x, y, s] = p.trail[3];
     return { p, x, y, s, pr: project3(nx(x), nx(y), nz(zNow(p))) };
   }).sort((a, b) => a.pr.depth - b.pr.depth);
@@ -1860,6 +1878,10 @@ function draw3D() {
   }).join('');
 
   svg.innerHTML = seg.join('') + labels + dots + trails;
+  const cnt = document.querySelector('#sig-3d .c3-count');
+  if (cnt) cnt.textContent = show3 === 'selected'
+    ? `${sel.length} selected (others hidden)`
+    : (sel.length ? `${sel.length} selected of ${pts0.length}` : `${pts0.length} regions`);
 }
 
 // drag-to-rotate (handlers are global; only act on the 3-D svg)
@@ -1876,6 +1898,16 @@ document.addEventListener('mousemove', e => {
   draw3D();
 });
 document.addEventListener('mouseup', () => { drag3 = null; });
+document.addEventListener('wheel', e => {
+  const svg = e.target.closest && e.target.closest('svg.scatter3d');
+  if (!svg) return;
+  e.preventDefault();
+  zoom3 = Math.max(0.4, Math.min(6, zoom3 * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+  draw3D();
+}, { passive: false });
+document.addEventListener('dblclick', e => {
+  if (e.target.closest && e.target.closest('svg.scatter3d')) reset3D();
+});
 
 function renderSignals() {
   const out = document.getElementById('sig-results');
