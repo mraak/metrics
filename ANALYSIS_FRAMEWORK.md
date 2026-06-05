@@ -448,6 +448,30 @@ Each clause above is a lower-tier fact; the Finding is the useful combination of
 
 The methods below are *options* for composing Findings, not requirements.
 
+### A Finding is a composite signal (N-dimensional)
+
+The most important idea in the framework: **a Finding is a composite signal.** A single signal is a 1-D trajectory (one comparative metric over time). Stack several signals and you get an **N-dimensional point that moves over time** — and everything we said about single-signal *strength* lifts directly to N dimensions.
+
+**Worked example — the share × growth quadrant (a 2-D composite).** Two peer-relative signals, both vs the volume-weighted national reference:
+
+- `mshare_deviation` — *position* (is the region ahead of or behind peers on share?)
+- `growth_deviation` — *momentum* (is it out-growing or under-growing the brand?)
+
+Plot a region by (share dev, growth dev) and it falls in one of four quadrants — **Losing-on-both / Slipping / Catching-up / Star** — with severity from how bad and how deteriorating each axis is. That's `findings.py` today; the Signals tab visualises it as a scatter + trajectory chart.
+
+**But 2-D is just the example. Generalise to N.** Stack any signals — share, growth, forecast-gap, price erosion, competitor pressure, … — into one vector. Strength generalises exactly:
+
+| 1-D (one signal) | N-D (composite) |
+|---|---|
+| magnitude `V = Σ\|step δ\|` | `V = Σ ‖step vector‖` — path length in N-space |
+| net `D = now − start` | `D` = net displacement **vector**; loudness = `‖D‖` |
+| coherence `ρ = D/V` | `ρ = ‖D‖ / V` — how *directed* the N-D move is |
+| sign(D) → good/bad | the **bad orthant** (every axis pointing the wrong way) generalises the 2-D "red corner" |
+
+**Why this matters: composite loudness can exceed any single axis.** A region drifting *quietly* on share, *quietly* on growth, and *quietly* on plan — but all three in the same bad direction — is a **loud composite**, even though no single signal would trip a threshold. Vectors add. That signal is invisible to one-metric monitoring and surfaces only when you compose.
+
+**The division of labour — the whole point of the platform.** The human declares *which* composites are worth watching (the axes and their good/bad directions — a recipe in the Knowledge Definitions); the platform then **scans every entity (region, territory, product) and surfaces where that composite is loud**, ranked by relevance, re-derived on every data refresh. *Define a composite once → it watches everywhere, forever.* That is the auto-analysis loop: a human supplies the "what to look for," the machine supplies the "where, right now, is it loud."
+
 ### Method 1: IF/THEN Rules (Deterministic)
 
 Simple rule-based pattern detection.
