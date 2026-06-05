@@ -908,7 +908,8 @@ body.dark-theme .rel-high { color: #e0a050; }
 
 /* share × growth quadrant scatter */
 .scatter-wrap { margin-top: 20px; max-width: 900px; }
-.scatter { width: 100%; height: auto; background: #fafbfc; border: 1px solid #e8e8e8; border-radius: 8px; }
+.scatter { width: 100%; height: auto; background: #fafbfc; border: 1px solid #e8e8e8; border-radius: 8px; cursor: grab; user-select: none; }
+.scatter:active { cursor: grabbing; }
 body.dark-theme .scatter { background: #0d0f14; border-color: #1e2232; }
 .scatter .axis { stroke: #cbd2da; stroke-width: 1; }
 body.dark-theme .scatter .axis { stroke: #2a3242; }
@@ -1657,11 +1658,19 @@ async function loadSignals() {
   loadScatter(brand);
 }
 
-let scatterData = null, trailSel = new Set();
+let scatterData = null, trailSel = new Set(), maxSales = 1;
 const QW = 860, QH = 380, QP = 46, QM = 15;
 const qpx = v => QP + (Math.max(-QM, Math.min(QM, v)) + QM) / (2 * QM) * (QW - 2 * QP);
 const qpy = v => (QH - QP) - (Math.max(-QM, Math.min(QM, v)) + QM) / (2 * QM) * (QH - 2 * QP);
+const dotR = s => (1.6 + Math.sqrt(Math.max(0, s) / maxSales) * 7).toFixed(1);   // area ∝ volume
 const TRAIL_COLORS = ['#2266aa', '#cc3322', '#1a8a55', '#aa5500', '#6a3fb0', '#0d8b8b'];
+
+// shared zoom/pan view for both quadrant charts (same coordinate plane)
+let quadView = { x: 0, y: 0, w: QW, h: QH };
+function applyQuadView() {
+  document.querySelectorAll('#tab-signals svg.scatter').forEach(svg =>
+    svg.setAttribute('viewBox', `${quadView.x.toFixed(1)} ${quadView.y.toFixed(1)} ${quadView.w.toFixed(1)} ${quadView.h.toFixed(1)}`));
+}
 
 function quadAxes() {
   const x0 = qpx(0).toFixed(1), y0 = qpy(0).toFixed(1);
@@ -1682,19 +1691,22 @@ async function loadScatter(brand) {
   catch (e) { el.innerHTML = ''; document.getElementById('sig-trails').innerHTML = ''; return; }
   if (!d || d.error || !d.points) { el.innerHTML = ''; document.getElementById('sig-trails').innerHTML = ''; return; }
   scatterData = d; trailSel = new Set();
+  maxSales = Math.max(1, ...d.points.map(p => p.trail[3][2]));
+  quadView = { x: 0, y: 0, w: QW, h: QH };   // reset zoom on new brand
   el.innerHTML = renderScatter(d);
   renderTrails();
+  applyQuadView();
 }
 
 function renderScatter(d) {
   const dots = d.points.map((pt, i) => {
     const [x, y] = pt.trail[3];
     const cls = (x >= 0 && y >= 0) ? 'q-star' : (x < 0 && y < 0) ? 'q-prob' : 'q-mixed';
-    const tip = `${pt.region} · ${pt.territory} — MS dev ${x > 0 ? '+' : ''}${x}pp · growth dev ${y > 0 ? '+' : ''}${y}pp · rank ${pt.rank} (click to trace)`;
-    return `<circle class="dot ${cls}${trailSel.has(pt.region) ? ' sel' : ''}" cx="${qpx(x).toFixed(1)}" cy="${qpy(y).toFixed(1)}" r="${(2 + pt.rank / 100 * 5).toFixed(1)}" data-tip="${tip}" onclick="toggleTrail(${i})"></circle>`;
+    const tip = `${pt.region} · ${pt.territory} — MS dev ${x > 0 ? '+' : ''}${x}pp · growth dev ${y > 0 ? '+' : ''}${y}pp · rank ${pt.rank} · €${(pt.trail[3][2] / 1e6).toFixed(2)}M (click to trace)`;
+    return `<circle class="dot ${cls}${trailSel.has(pt.region) ? ' sel' : ''}" cx="${qpx(x).toFixed(1)}" cy="${qpy(y).toFixed(1)}" r="${dotR(pt.trail[3][2])}" data-tip="${tip}" onclick="toggleTrail(${i})"></circle>`;
   }).join('');
   return `<div class="scatter-wrap">
-    <div class="fnd-section">Share × Growth — every region vs the brand’s national average (${d.period}, ${d.asof}). Click a dot to trace its last-4-months path below. Axes ±${QM}pp.</div>
+    <div class="fnd-section">Share × Growth — every region vs the brand’s national average (${d.period}, ${d.asof}). Dot size = sales volume · click a dot to trace its path · scroll to zoom, drag to pan, double-click to reset.</div>
     <svg viewBox="0 0 ${QW} ${QH}" class="scatter">${quadAxes()}${dots}</svg>
   </div>`;
 }
@@ -1704,6 +1716,7 @@ function toggleTrail(i) {
   if (trailSel.has(reg)) trailSel.delete(reg); else trailSel.add(reg);
   document.getElementById('sig-scatter').innerHTML = renderScatter(scatterData);
   renderTrails();
+  applyQuadView();
 }
 
 function renderTrails() {
@@ -1716,8 +1729,8 @@ function renderTrails() {
   const body = sel.map((p, idx) => {
     const c = TRAIL_COLORS[idx % TRAIL_COLORS.length];
     const poly = p.trail.map(([x, y]) => `${qpx(x).toFixed(1)},${qpy(y).toFixed(1)}`).join(' ');
-    const dots = p.trail.map(([x, y], k) =>
-      `<circle cx="${qpx(x).toFixed(1)}" cy="${qpy(y).toFixed(1)}" r="${k === 3 ? 5 : 3.5}" fill="${c}" opacity="${(0.2 + k / 3 * 0.8).toFixed(2)}"/>`).join('');
+    const dots = p.trail.map(([x, y, s], k) =>
+      `<circle cx="${qpx(x).toFixed(1)}" cy="${qpy(y).toFixed(1)}" r="${dotR(s)}" fill="${c}" opacity="${(0.2 + k / 3 * 0.8).toFixed(2)}"><title></title></circle>`).join('');
     const [lx, ly] = p.trail[3];
     return `<polyline points="${poly}" fill="none" stroke="${c}" stroke-width="1.5" opacity="0.55"/>${dots}` +
       `<text class="trail-lbl" x="${(qpx(lx) + 7).toFixed(1)}" y="${(qpy(ly) + 3).toFixed(1)}" fill="${c}">${p.region}</text>`;
@@ -1811,6 +1824,37 @@ function sortBy(i) {
   });
   document.addEventListener('mousemove', e => { if (cur) place(e); });
   document.addEventListener('mouseleave', () => { tt.classList.remove('show'); cur = null; });
+})();
+
+// ── Zoom / pan for the quadrant charts (shared view, both charts) ──
+(function () {
+  const sp = (svg, cx, cy) => { const r = svg.getBoundingClientRect(); return { x: quadView.x + (cx - r.left) / r.width * quadView.w, y: quadView.y + (cy - r.top) / r.height * quadView.h }; };
+  let pan = null;
+  document.addEventListener('wheel', e => {
+    const svg = e.target.closest && e.target.closest('svg.scatter'); if (!svg) return;
+    e.preventDefault();
+    const pt = sp(svg, e.clientX, e.clientY);
+    const f = e.deltaY < 0 ? 0.85 : 1 / 0.85;
+    let nw = Math.max(QW * 0.12, Math.min(QW, quadView.w * f)), nh = nw * (QH / QW);
+    quadView.x = pt.x - (pt.x - quadView.x) * (nw / quadView.w);
+    quadView.y = pt.y - (pt.y - quadView.y) * (nh / quadView.h);
+    quadView.w = nw; quadView.h = nh; applyQuadView();
+  }, { passive: false });
+  document.addEventListener('mousedown', e => {
+    const svg = e.target.closest && e.target.closest('svg.scatter'); if (!svg) return;
+    if (e.target.classList && e.target.classList.contains('dot')) return;  // keep click-to-trace
+    pan = { sx: e.clientX, sy: e.clientY, vx: quadView.x, vy: quadView.y, svg }; e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!pan) return; const r = pan.svg.getBoundingClientRect();
+    quadView.x = pan.vx - (e.clientX - pan.sx) / r.width * quadView.w;
+    quadView.y = pan.vy - (e.clientY - pan.sy) / r.height * quadView.h; applyQuadView();
+  });
+  document.addEventListener('mouseup', () => { pan = null; });
+  document.addEventListener('dblclick', e => {
+    if (!(e.target.closest && e.target.closest('svg.scatter'))) return;
+    quadView = { x: 0, y: 0, w: QW, h: QH }; applyQuadView();
+  });
 })();
 
 /* ── Findings tab ── */

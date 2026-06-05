@@ -175,7 +175,9 @@ def api_trails(params):
                 mshare_deviation AS x0, LAG(mshare_deviation,1) OVER w AS x1,
                 LAG(mshare_deviation,2) OVER w AS x2, LAG(mshare_deviation,3) OVER w AS x3,
                 growth_deviation AS y0, LAG(growth_deviation,1) OVER w AS y1,
-                LAG(growth_deviation,2) OVER w AS y2, LAG(growth_deviation,3) OVER w AS y3
+                LAG(growth_deviation,2) OVER w AS y2, LAG(growth_deviation,3) OVER w AS y3,
+                sales_eur AS s0, LAG(sales_eur,1) OVER w AS s1,
+                LAG(sales_eur,2) OVER w AS s2, LAG(sales_eur,3) OVER w AS s3
               FROM region_metrics WHERE brand_name=? AND period_type='MAT'
               WINDOW w AS (PARTITION BY region_name ORDER BY year_month)
             ) SELECT * FROM s WHERE year_month=? AND x3 IS NOT NULL AND y3 IS NOT NULL
@@ -183,9 +185,12 @@ def api_trails(params):
     finally:
         con.close()
     rnd = lambda v: round(v, 2)
+    # each trail point: [mshare_dev, growth_dev, sales_eur]  (oldest -> now)
     out = [{"region": r["region_name"], "territory": r["territory_name"], "rank": r["rk"],
-            "trail": [[rnd(r["x3"]), rnd(r["y3"])], [rnd(r["x2"]), rnd(r["y2"])],
-                      [rnd(r["x1"]), rnd(r["y1"])], [rnd(r["x0"]), rnd(r["y0"])]]}
+            "trail": [[rnd(r["x3"]), rnd(r["y3"]), round(r["s3"])],
+                      [rnd(r["x2"]), rnd(r["y2"]), round(r["s2"])],
+                      [rnd(r["x1"]), rnd(r["y1"]), round(r["s1"])],
+                      [rnd(r["x0"]), rnd(r["y0"]), round(r["s0"])]]}
            for r in rows]
     return {"brand": brand, "asof": asof, "period": "MAT", "points": out}
 
