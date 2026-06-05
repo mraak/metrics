@@ -918,6 +918,11 @@ body.dark-theme .scatter .axis { stroke: #2a3242; }
 body.dark-theme .scatter .dot { stroke: #0d0f14; }
 .scatter .dot:hover { opacity: 1; stroke: #333; }
 .q-star { fill: #1a8a55; } .q-prob { fill: #cc3322; } .q-mixed { fill: #caa23a; }
+.scatter .dot.sel { stroke: #222; stroke-width: 1.6; opacity: 1; }
+body.dark-theme .scatter .dot.sel { stroke: #fff; }
+.scatter .trail-lbl { font-size: 10px; font-weight: 600; }
+.trail-hint { font-size: 12px; color: #888; margin-top: 14px; }
+body.dark-theme .trail-hint { color: #777; }
 
 /* custom hover tooltip (reliable replacement for native title) */
 #tt {
@@ -1266,6 +1271,7 @@ body.dark-theme .scatter .dot { stroke: #0d0f14; }
         <div class="signals-interp" id="sig-interp"></div>
         <div id="sig-results">Loading…</div>
         <div id="sig-scatter"></div>
+        <div id="sig-trails"></div>
       </div>
     </div>
   </div>
@@ -1651,41 +1657,74 @@ async function loadSignals() {
   loadScatter(brand);
 }
 
+let scatterData = null, trailSel = new Set();
+const QW = 860, QH = 380, QP = 46, QM = 15;
+const qpx = v => QP + (Math.max(-QM, Math.min(QM, v)) + QM) / (2 * QM) * (QW - 2 * QP);
+const qpy = v => (QH - QP) - (Math.max(-QM, Math.min(QM, v)) + QM) / (2 * QM) * (QH - 2 * QP);
+const TRAIL_COLORS = ['#2266aa', '#cc3322', '#1a8a55', '#aa5500', '#6a3fb0', '#0d8b8b'];
+
+function quadAxes() {
+  const x0 = qpx(0).toFixed(1), y0 = qpy(0).toFixed(1);
+  return `<line class="axis" x1="${QP}" y1="${y0}" x2="${QW - QP}" y2="${y0}"/>` +
+    `<line class="axis" x1="${x0}" y1="${QP}" x2="${x0}" y2="${QH - QP}"/>` +
+    `<text class="q-lbl" x="${QW - QP - 4}" y="${QP + 14}" text-anchor="end" fill="#1a8a55">⭐ gaining share & out-growing</text>` +
+    `<text class="q-lbl" x="${QP + 4}" y="${QP + 14}" text-anchor="start" fill="#9a7700">↗ low share, out-growing</text>` +
+    `<text class="q-lbl" x="${QW - QP - 4}" y="${QH - QP - 6}" text-anchor="end" fill="#9a7700">⚠ high share, under-growing</text>` +
+    `<text class="q-lbl" x="${QP + 4}" y="${QH - QP - 6}" text-anchor="start" fill="#cc3322">🔴 low share & under-growing</text>` +
+    `<text class="ax-lbl" x="${QW - QP}" y="${(qpy(0) - 6).toFixed(1)}" text-anchor="end">market-share deviation →</text>` +
+    `<text class="ax-lbl" x="${(qpx(0) + 6).toFixed(1)}" y="${QP - 2}" text-anchor="start">↑ growth deviation</text>`;
+}
+
 async function loadScatter(brand) {
   const el = document.getElementById('sig-scatter');
   let d;
-  try { d = await (await fetch('/api/scatter?brand=' + encodeURIComponent(brand))).json(); }
-  catch (e) { el.innerHTML = ''; return; }
-  if (!d || d.error || !d.points) { el.innerHTML = ''; return; }
+  try { d = await (await fetch('/api/trails?brand=' + encodeURIComponent(brand))).json(); }
+  catch (e) { el.innerHTML = ''; document.getElementById('sig-trails').innerHTML = ''; return; }
+  if (!d || d.error || !d.points) { el.innerHTML = ''; document.getElementById('sig-trails').innerHTML = ''; return; }
+  scatterData = d; trailSel = new Set();
   el.innerHTML = renderScatter(d);
+  renderTrails();
 }
 
 function renderScatter(d) {
-  const W = 860, H = 380, p = 46, XM = 15, YM = 15;
-  const px = v => p + (Math.max(-XM, Math.min(XM, v)) + XM) / (2 * XM) * (W - 2 * p);
-  const py = v => (H - p) - (Math.max(-YM, Math.min(YM, v)) + YM) / (2 * YM) * (H - 2 * p);
-  const x0 = px(0).toFixed(1), y0 = py(0).toFixed(1);
-  const dots = d.points.map(pt => {
-    const good = pt.x >= 0 && pt.y >= 0, bad = pt.x < 0 && pt.y < 0;
-    const cls = good ? 'q-star' : bad ? 'q-prob' : 'q-mixed';
-    const tip = `${pt.region} · ${pt.territory} — MS dev ${pt.x > 0 ? '+' : ''}${pt.x}pp · growth dev ${pt.y > 0 ? '+' : ''}${pt.y}pp · rank ${pt.rank}`;
-    return `<circle class="dot ${cls}" cx="${px(pt.x).toFixed(1)}" cy="${py(pt.y).toFixed(1)}" r="${(2 + pt.rank / 100 * 5).toFixed(1)}" data-tip="${tip}"></circle>`;
+  const dots = d.points.map((pt, i) => {
+    const [x, y] = pt.trail[3];
+    const cls = (x >= 0 && y >= 0) ? 'q-star' : (x < 0 && y < 0) ? 'q-prob' : 'q-mixed';
+    const tip = `${pt.region} · ${pt.territory} — MS dev ${x > 0 ? '+' : ''}${x}pp · growth dev ${y > 0 ? '+' : ''}${y}pp · rank ${pt.rank} (click to trace)`;
+    return `<circle class="dot ${cls}${trailSel.has(pt.region) ? ' sel' : ''}" cx="${qpx(x).toFixed(1)}" cy="${qpy(y).toFixed(1)}" r="${(2 + pt.rank / 100 * 5).toFixed(1)}" data-tip="${tip}" onclick="toggleTrail(${i})"></circle>`;
   }).join('');
-  const lbl = (x, y, a, t, c) => `<text class="q-lbl" x="${x}" y="${y}" text-anchor="${a}" fill="${c}">${t}</text>`;
   return `<div class="scatter-wrap">
-    <div class="fnd-section">Share × Growth — every region vs the brand’s national average (${d.period}, ${d.asof}). Axes clamped to ±${XM}pp.</div>
-    <svg viewBox="0 0 ${W} ${H}" class="scatter">
-      <line class="axis" x1="${p}" y1="${y0}" x2="${W - p}" y2="${y0}"/>
-      <line class="axis" x1="${x0}" y1="${p}" x2="${x0}" y2="${H - p}"/>
-      ${lbl(W - p - 4, p + 14, 'end', '⭐ gaining share & out-growing', '#1a8a55')}
-      ${lbl(p + 4, p + 14, 'start', '↗ low share, out-growing', '#9a7700')}
-      ${lbl(W - p - 4, H - p - 6, 'end', '⚠ high share, under-growing', '#9a7700')}
-      ${lbl(p + 4, H - p - 6, 'start', '🔴 low share & under-growing', '#cc3322')}
-      ${dots}
-      <text class="ax-lbl" x="${W - p}" y="${(py(0) - 6).toFixed(1)}" text-anchor="end">market-share deviation →</text>
-      <text class="ax-lbl" x="${(px(0) + 6).toFixed(1)}" y="${p - 2}" text-anchor="start">↑ growth deviation</text>
-    </svg>
+    <div class="fnd-section">Share × Growth — every region vs the brand’s national average (${d.period}, ${d.asof}). Click a dot to trace its last-4-months path below. Axes ±${QM}pp.</div>
+    <svg viewBox="0 0 ${QW} ${QH}" class="scatter">${quadAxes()}${dots}</svg>
   </div>`;
+}
+
+function toggleTrail(i) {
+  const reg = scatterData.points[i].region;
+  if (trailSel.has(reg)) trailSel.delete(reg); else trailSel.add(reg);
+  document.getElementById('sig-scatter').innerHTML = renderScatter(scatterData);
+  renderTrails();
+}
+
+function renderTrails() {
+  const el = document.getElementById('sig-trails');
+  const sel = scatterData ? scatterData.points.filter(p => trailSel.has(p.region)) : [];
+  if (!sel.length) {
+    el.innerHTML = '<div class="trail-hint">↑ Click regions in the scatter to trace how they moved from −3m (faint) to now (solid).</div>';
+    return;
+  }
+  const body = sel.map((p, idx) => {
+    const c = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+    const poly = p.trail.map(([x, y]) => `${qpx(x).toFixed(1)},${qpy(y).toFixed(1)}`).join(' ');
+    const dots = p.trail.map(([x, y], k) =>
+      `<circle cx="${qpx(x).toFixed(1)}" cy="${qpy(y).toFixed(1)}" r="${k === 3 ? 5 : 3.5}" fill="${c}" opacity="${(0.2 + k / 3 * 0.8).toFixed(2)}"/>`).join('');
+    const [lx, ly] = p.trail[3];
+    return `<polyline points="${poly}" fill="none" stroke="${c}" stroke-width="1.5" opacity="0.55"/>${dots}` +
+      `<text class="trail-lbl" x="${(qpx(lx) + 7).toFixed(1)}" y="${(qpy(ly) + 3).toFixed(1)}" fill="${c}">${p.region}</text>`;
+  }).join('');
+  const legend = sel.map((p, idx) => `<span style="color:${TRAIL_COLORS[idx % TRAIL_COLORS.length]}">●</span> ${p.region}`).join(' &nbsp; ');
+  el.innerHTML = `<div class="scatter-wrap"><div class="fnd-section">Trajectories — −3m (faint) → now (solid). ${legend}</div>` +
+    `<svg viewBox="0 0 ${QW} ${QH}" class="scatter">${quadAxes()}${body}</svg></div>`;
 }
 
 function renderSignals() {

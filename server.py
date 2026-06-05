@@ -159,6 +159,37 @@ def api_scatter(params):
     return {"brand": brand, "period": period, "asof": asof, "points": pts}
 
 
+def api_trails(params):
+    """Per-region 4-month path in the share x growth plane (MAT m3..now)."""
+    con = _conn()
+    try:
+        brand = params.get("brand", [None])[0]
+        if not brand:
+            brand = con.execute("SELECT DISTINCT brand_name FROM region_metrics "
+                                "ORDER BY brand_name LIMIT 1").fetchone()[0]
+        asof = params.get("asof", [None])[0] or con.execute(
+            "SELECT MAX(year_month) FROM region_metrics").fetchone()[0]
+        rows = con.execute("""
+            WITH s AS (
+              SELECT region_name, territory_name, year_month, rank_sales_eur AS rk,
+                mshare_deviation AS x0, LAG(mshare_deviation,1) OVER w AS x1,
+                LAG(mshare_deviation,2) OVER w AS x2, LAG(mshare_deviation,3) OVER w AS x3,
+                growth_deviation AS y0, LAG(growth_deviation,1) OVER w AS y1,
+                LAG(growth_deviation,2) OVER w AS y2, LAG(growth_deviation,3) OVER w AS y3
+              FROM region_metrics WHERE brand_name=? AND period_type='MAT'
+              WINDOW w AS (PARTITION BY region_name ORDER BY year_month)
+            ) SELECT * FROM s WHERE year_month=? AND x3 IS NOT NULL AND y3 IS NOT NULL
+        """, (brand, asof)).fetchall()
+    finally:
+        con.close()
+    rnd = lambda v: round(v, 2)
+    out = [{"region": r["region_name"], "territory": r["territory_name"], "rank": r["rk"],
+            "trail": [[rnd(r["x3"]), rnd(r["y3"])], [rnd(r["x2"]), rnd(r["y2"])],
+                      [rnd(r["x1"]), rnd(r["y1"])], [rnd(r["x0"]), rnd(r["y0"])]]}
+           for r in rows]
+    return {"brand": brand, "asof": asof, "period": "MAT", "points": out}
+
+
 def api_knowledge():
     """Expose the relevant Knowledge Definitions for the app's 'behind the
     scenes' views: signal interpretations, finding recipes, insight framings."""
@@ -207,6 +238,8 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._send_json(api_knowledge())
                 if parsed.path == "/api/scatter":
                     return self._send_json(api_scatter(params))
+                if parsed.path == "/api/trails":
+                    return self._send_json(api_trails(params))
                 if parsed.path == "/api/findings":
                     import findings  # lazy: findings.py imports server
                     brand = params.get("brand", ["Oncleris"])[0]

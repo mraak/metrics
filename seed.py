@@ -48,7 +48,11 @@ competitors = [
     {"competitor_id": "CPT16", "competitor_name": "Breathalin", "franchise": "Respiratory"},
 ]
 
-# ── Month range: 25 months ending 2026-05 ────────────────────────────────────
+# ── Month range: 30 months ending 2026-05 ────────────────────────────────────
+# 30 months so MAT (12-mo) year-over-year measures have ≥4 monthly points and
+# their signals can be tracked to -3m. Launch brands keep their real launch
+# dates (months_active is launch-relative), so only absolute € levels of the
+# established brands shift slightly; growth rates / market shares stay ~stable.
 
 def make_months(start_year, start_month, n):
     result, y, m = [], start_year, start_month
@@ -59,12 +63,12 @@ def make_months(start_year, start_month, n):
             m, y = 1, y + 1
     return result
 
-MONTHS = make_months(2024, 5, 25)   # indices 0-24 → 2024-05 … 2026-05
+MONTHS = make_months(2023, 12, 30)   # indices 0-29 → 2023-12 … 2026-05
 
-# Launch indices (months_idx into MONTHS)
-# MONTHS[15] = 2025-08  ← Veratenz, launched 10 months ago
-# MONTHS[22] = 2026-03  ← Respithal, launched  3 months ago
-LAUNCH_MONTH_IDX = {"BRD05": 22, "BRD06": 15}
+# Launch indices (months_idx into MONTHS) — same real dates as before
+# MONTHS[20] = 2025-08  ← Veratenz, launched 10 months ago
+# MONTHS[27] = 2026-03  ← Respithal, launched  3 months ago
+LAUNCH_MONTH_IDX = {"BRD05": 27, "BRD06": 20}
 
 # ── Load regions ──────────────────────────────────────────────────────────────
 
