@@ -17,8 +17,112 @@ re-enters per persona at the Insight layer. See ANALYSIS_FRAMEWORK.md.
   star        — ahead on both                                (fine)
 """
 
+import json
 import server
 import knowledge
+
+# ── Findings catalog (persistent store) ─────────────────────────────────────
+_DDL = """
+CREATE TABLE IF NOT EXISTS findings_catalog (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    brand_name    TEXT    NOT NULL,
+    region_name   TEXT    NOT NULL,
+    territory_name TEXT   NOT NULL,
+    year_month    TEXT    NOT NULL,   -- the asof period this finding describes
+    recorded_at   TEXT    NOT NULL DEFAULT (datetime('now')),
+    finding       TEXT    NOT NULL,   -- losing_both / slipping / catching_up / star
+    severity_band TEXT    NOT NULL,   -- critical / high / moderate / low
+    severity_score INTEGER NOT NULL,  -- 0-6
+    ms_now        REAL,               -- mshare_deviation at asof
+    ms_sev        INTEGER,            -- 0-3
+    growth_now    REAL,               -- growth_deviation at asof
+    growth_sev    INTEGER,            -- 0-3
+    mat_rank      INTEGER,
+    market_share  REAL,
+    months_red    INTEGER DEFAULT 0,
+    escalate      INTEGER DEFAULT 0,  -- 0/1
+    improved      INTEGER DEFAULT 0,  -- 0/1
+    provenance    TEXT                -- JSON: series + strength for both axes
+);
+CREATE UNIQUE INDEX IF NOT EXISTS findings_catalog_pk
+    ON findings_catalog(brand_name, region_name, year_month);
+"""
+
+def _ensure_table(con):
+    for stmt in _DDL.strip().split(';'):
+        s = stmt.strip()
+        if s:
+            con.execute(s)
+    con.commit()
+
+
+def save_findings(rows, brand, asof, force=False):
+    """Write finding rows to the catalog.
+    INSERT OR IGNORE by default (first write wins — immutable history).
+    Pass force=True to overwrite (development / re-seed).
+    Returns (inserted, skipped).
+    """
+    con = server._conn()
+    _ensure_table(con)
+    verb = 'INSERT OR REPLACE' if force else 'INSERT OR IGNORE'
+    inserted = skipped = 0
+    for r in rows:
+        prov = json.dumps({
+            'ms_series':       r['series'],
+            'ms_strength':     r['strength'],
+            'growth_series':   r['growth_series'],
+            'growth_strength': r['growth_strength'],
+        })
+        cur = con.execute(f"""
+            {verb} INTO findings_catalog
+                (brand_name, region_name, territory_name, year_month,
+                 finding, severity_band, severity_score,
+                 ms_now, ms_sev, growth_now, growth_sev,
+                 mat_rank, market_share, months_red, escalate, improved,
+                 provenance)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """, (brand, r['region'], r['territory'], asof,
+              r['finding'], r['severity']['band'], r['severity']['score'],
+              r['now'], r['severity']['ms'],
+              r['growth_now'], r['severity']['growth'],
+              r['mat_rank'], r['market_share'],
+              r.get('months_red', 0),
+              1 if r.get('escalate') else 0,
+              1 if r.get('improved') else 0,
+              prov))
+        if cur.rowcount:
+            inserted += 1
+        else:
+            skipped += 1
+    con.commit()
+    con.close()
+    return inserted, skipped
+
+
+def catalog_stats():
+    """Total rows and distinct brand/asof pairs stored in the catalog."""
+    con = server._conn()
+    _ensure_table(con)
+    r = con.execute(
+        "SELECT COUNT(*) AS n, COUNT(DISTINCT brand_name||'|'||year_month) AS periods "
+        "FROM findings_catalog").fetchone()
+    con.close()
+    return {'total_rows': r['n'], 'periods': r['periods']}
+
+
+def region_history(brand, region):
+    """Finding history for one region, oldest-first."""
+    con = server._conn()
+    _ensure_table(con)
+    rows = con.execute("""
+        SELECT year_month, finding, severity_band, severity_score,
+               ms_now, growth_now, mat_rank, months_red, escalate, improved, provenance
+        FROM findings_catalog
+        WHERE brand_name=? AND region_name=?
+        ORDER BY year_month
+    """, (brand, region)).fetchall()
+    con.close()
+    return [dict(r) for r in rows]
 
 FINDINGS = {
     'losing_both': ('Losing on both', 3),
@@ -109,7 +213,7 @@ def _history(brand, asof, defs):
     return hist
 
 
-def find_findings(brand, asof=None):
+def find_findings(brand, asof=None, force=False):
     defs = knowledge.load()
     p_ms = {"brand": [brand], "signal": ["mshare_dev_mat_step_1m_3m"]}
     p_gr = {"brand": [brand], "signal": ["growth_deviation_mat_step_1m_3m"]}
@@ -163,14 +267,27 @@ def find_findings(brand, asof=None):
         counts[x['finding']] += 1
     summary = [{'finding': f, 'label': FINDINGS[f][0], 'count': counts[f]} for f in ORDER]
     territories = sorted(set(x['territory'] for x in rows))
+
+    # persist to catalog (INSERT OR IGNORE = first write wins; pass force=True to overwrite)
+    inserted, skipped = save_findings(rows, brand, asof, force=force)
+    stats = catalog_stats()
+
     return {'brand': brand, 'asof': asof, 'count': len(rows),
             'summary': summary, 'territories': territories, 'rows': rows,
-            'recovered': recovered}
+            'recovered': recovered,
+            'catalog': {'inserted': inserted, 'skipped': skipped,
+                        'total_rows': stats['total_rows'],
+                        'periods': stats['periods']}}
 
 
 if __name__ == "__main__":
     import sys
-    res = find_findings(sys.argv[1] if len(sys.argv) > 1 else "Oncleris")
+    force = '--force' in sys.argv
+    brand = next((a for a in sys.argv[1:] if not a.startswith('--')), "Oncleris")
+    res = find_findings(brand, force=force)
+    cat = res['catalog']
     print(f"{res['brand']} @ {res['asof']}: {res['count']} regions")
     for s in res['summary']:
         print(f"  {s['label']:16} {s['count']}")
+    print(f"\nCatalog: inserted={cat['inserted']} skipped={cat['skipped']} "
+          f"total={cat['total_rows']} rows across {cat['periods']} brand/period pairs")

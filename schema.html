@@ -954,6 +954,21 @@ body.dark-theme .scatter .dot { stroke: #0d0f14; }
 .scatter .dot.sel { stroke: #222; stroke-width: 1.6; opacity: 1; }
 body.dark-theme .scatter .dot.sel { stroke: #fff; }
 .scatter .trail-lbl { font-size: 10px; font-weight: 600; }
+/* findings catalog bar + history */
+.catalog-bar { font-size: 12px; color: #555; padding: 6px 10px; background: #f3f5f7; border-radius: 6px; margin-bottom: 10px; }
+body.dark-theme .catalog-bar { background: #141922; color: #8a93a0; }
+.catalog-bar a { color: #5a7ab5; text-decoration: none; }
+.cat-new  { color: #1a8a55; font-weight: 600; }
+.cat-skip { color: #888; }
+.fnd-row { cursor: pointer; }
+.fnd-row:hover td { background: #f5f7fa !important; }
+body.dark-theme .fnd-row:hover td { background: #141922 !important; }
+.hist-detail-row td { padding: 0 !important; }
+.hist-detail { padding: 10px 14px 12px; background: #fafbfe; border-top: 2px solid #d6e0f0; border-bottom: 1px solid #e8edf4; font-size: 12px; }
+body.dark-theme .hist-detail { background: #0d1018; border-top-color: #1e2a40; border-bottom-color: #1a2030; }
+.hist-pills { display: flex; flex-wrap: wrap; gap: 5px; margin: 7px 0 5px; }
+.hist-pill { font-size: 11px; padding: 2px 7px; cursor: default; }
+.hist-note { color: #888; font-size: 11px; margin-top: 3px; }
 .trail-hint { font-size: 12px; color: #888; margin-top: 14px; }
 body.dark-theme .trail-hint { color: #777; }
 
@@ -1343,6 +1358,7 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
         <span class="signals-meta" id="fnd-meta"></span>
       </div>
       <div class="signals-body">
+        <div id="fnd-catalog-bar" class="catalog-bar"></div>
         <div id="fnd-summary"></div>
         <div id="fnd-results">Loading…</div>
       </div>
@@ -2141,7 +2157,55 @@ async function loadFindings() {
   if (!data || data.error) { out.innerHTML = `<div class="sig-error">${(data && data.error) || 'error'}</div>`; return; }
   fndData = data;
   document.getElementById('fnd-meta').textContent = `${data.brand} · as-of ${data.asof} · ${data.count} findings`;
+  // catalog stats
+  const cat = data.catalog;
+  const catBar = document.getElementById('fnd-catalog-bar');
+  if (catBar && cat) {
+    const note = cat.inserted > 0
+      ? `<span class="cat-new">+${cat.inserted} new</span>`
+      : `<span class="cat-skip">all ${cat.skipped} already stored</span>`;
+    catBar.innerHTML = `📦 Findings catalog: <strong>${cat.total_rows.toLocaleString()} rows</strong> across ${cat.periods} brand/period pairs · this run: ${note} · <a href="#" onclick="event.preventDefault();showCatalogDrop()">INSERT OR IGNORE</a>`;
+  }
   renderFindings();
+}
+
+let fndHistCache = {};   // brand|region -> history array, cached per session
+async function loadRegionHistory(brand, region) {
+  const key = brand + '|' + region;
+  if (!fndHistCache[key]) {
+    const d = await fetch(`/api/findings/history?brand=${encodeURIComponent(brand)}&region=${encodeURIComponent(region)}`).then(r=>r.json()).catch(()=>null);
+    fndHistCache[key] = (d && d.history) || [];
+  }
+  return fndHistCache[key];
+}
+
+function renderHistoryPills(hist) {
+  if (!hist.length) return '<span style="color:#888">no prior periods stored yet</span>';
+  return hist.map(h => {
+    const tip = `${h.year_month} · ${h.finding} · ${h.severity_band} (${h.severity_score}) · MS ${h.ms_now > 0 ? '+' : ''}${h.ms_now?.toFixed(2)} · gr ${h.growth_now > 0 ? '+' : ''}${h.growth_now?.toFixed(2)}`;
+    return `<span class="fpill f-${h.finding} hist-pill" data-tip="${tip}">${h.year_month.slice(0,7)}</span>`;
+  }).join(' ');
+}
+
+let fndOpenRegion = null;
+async function toggleRegionHistory(brand, region, trEl) {
+  // close if already open for this region
+  const existing = document.getElementById('fnd-hist-row');
+  if (existing) existing.remove();
+  if (fndOpenRegion === region) { fndOpenRegion = null; return; }
+  fndOpenRegion = region;
+  const hist = await loadRegionHistory(brand, region);
+  const pills = renderHistoryPills(hist);
+  const tr = document.createElement('tr');
+  tr.id = 'fnd-hist-row';
+  tr.className = 'hist-detail-row';
+  const cols = document.querySelector('#fnd-results table thead tr')?.children.length || 10;
+  tr.innerHTML = `<td colspan="${cols}"><div class="hist-detail">
+    <strong>Finding history — ${region}</strong>
+    <div class="hist-pills">${pills}</div>
+    <div class="hist-note">Each pill = one stored period. First write wins — values are the snapshot at that moment.</div>
+  </div></td>`;
+  trEl.after(tr);
 }
 
 // ── Insights tab (per-user mini-reports) ──
@@ -2248,7 +2312,8 @@ function renderFindings() {
   const rows = filter ? fndData.rows.filter(r => r.finding === filter) : fndData.rows;
   document.getElementById('fnd-summary').innerHTML = summaryChips(fndData, fndData.rows);
   const head = ['Severity', 'Finding', 'Territory', 'Region', 'Share', 'MS dev', 'MS shape', 'growth dev', 'growth shape', 'rank'];
-  const body = rows.map(r => { const s = r.strength, g = r.growth_strength; return `<tr>
+  const brand = fndData.brand;
+  const body = rows.map(r => { const s = r.strength, g = r.growth_strength; return `<tr class="fnd-row" onclick="toggleRegionHistory('${esc3(brand)}','${esc3(r.region)}',this)" data-tip="Click to see stored finding history for ${r.region}">
     <td>${sevBar(r.severity)}</td>
     <td>${fpill(r)}</td>
     <td>${r.territory}</td>
@@ -2261,8 +2326,14 @@ function renderFindings() {
     <td class="num">${r.mat_rank}</td></tr>`; }).join('');
   const thead = head.map(th).join('');
   document.getElementById('fnd-results').innerHTML =
-    `<div class="fnd-section">Objective catalog — every flagged region (${rows.length})</div>` +
+    `<div class="fnd-section">Objective catalog — every flagged region (${rows.length}) · <span style="color:#888;font-weight:400">click any row to see stored finding history</span></div>` +
     `<table class="sig"><thead><tr>${thead}</tr></thead><tbody>${body}</tbody></table>`;
+  fndOpenRegion = null;
+}
+
+function showCatalogDrop() {
+  const msg = 'INSERT OR IGNORE means the first time findings are computed for a brand/period, they\'re written and frozen. Re-running the same period skips — the catalog is immutable history. Pass ?force=1 to the API (dev/re-seed only) to overwrite.';
+  alert(msg);
 }
 
 // ── Insights tab: per-user mini-reports ──

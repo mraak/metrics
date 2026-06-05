@@ -263,7 +263,19 @@ class Handler(SimpleHTTPRequestHandler):
                 if parsed.path == "/api/findings":
                     import findings  # lazy: findings.py imports server
                     brand = params.get("brand", ["Oncleris"])[0]
-                    return self._send_json(findings.find_findings(brand))
+                    force = params.get("force", ["0"])[0] == "1"
+                    return self._send_json(findings.find_findings(brand, force=force))
+                if parsed.path == "/api/findings/history":
+                    import findings
+                    brand  = params.get("brand",  ["Oncleris"])[0]
+                    region = params.get("region", [None])[0]
+                    if not region:
+                        return self._send_json({"error": "region required"}, 400)
+                    return self._send_json({"brand": brand, "region": region,
+                                            "history": findings.region_history(brand, region)})
+                if parsed.path == "/api/findings/catalog":
+                    import findings
+                    return self._send_json(findings.catalog_stats())
                 if parsed.path == "/api/territory":
                     import territory  # lazy: imports server
                     brand = params.get("brand", ["Oncleris"])[0]
