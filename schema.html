@@ -1727,13 +1727,17 @@ function renderScatter(d) {
   </div>`;
 }
 
-function toggleTrail(i) {
-  const reg = scatterData.points[i].region;
+function toggleTrail(i) { selectRegion(scatterData.points[i].region); }
+
+// shared selection across the 2-D scatter, 2-D trails and the 3-D view
+function selectRegion(reg) {
   if (trailSel.has(reg)) trailSel.delete(reg); else trailSel.add(reg);
   document.getElementById('sig-scatter').innerHTML = renderScatter(scatterData);
   renderTrails();
+  draw3D();
   applyQuadView();
 }
+const esc3 = s => String(s).replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
 function renderTrails() {
   const el = document.getElementById('sig-trails');
@@ -1765,6 +1769,7 @@ const Z3 = {
   units:  { label: 'Units (MAT volume)',   fmt: v => v.toLocaleString(),      unit: '' },
   growth: { label: 'YoY growth %',         fmt: v => (v > 0 ? '+' : '') + v,  unit: '%' },
 };
+const R3 = 5;        // uniform dot radius in 3-D space (size carries no meaning here)
 let z3key = 'rank', rot3 = { yaw: -0.62, pitch: 0.42 }, drag3 = null;
 
 function project3(x, y, z) {
@@ -1776,6 +1781,7 @@ function project3(x, y, z) {
 }
 
 function set3DZ(k) { z3key = k; draw3D(); }
+const zNow = p => (p.z && p.z[z3key]) ? p.z[z3key][3] : null;
 
 function render3D() {
   const el = document.getElementById('sig-3d');
@@ -1783,7 +1789,7 @@ function render3D() {
   const opts = Object.keys(Z3).map(k =>
     `<option value="${k}"${k === z3key ? ' selected' : ''}>${Z3[k].label}</option>`).join('');
   el.innerHTML = `<div class="scatter-wrap">
-    <div class="fnd-section">3-D view — <b>visualisation only, not used to generate findings</b>. The two finding axes (share × growth) plus a third signal you pick. Drag to rotate · dot size = sales volume.</div>
+    <div class="fnd-section">3-D view — <b>visualisation only, not used to generate findings</b>. The two finding axes (share × growth) plus a third signal you pick. Drag to rotate · <b>click dots to select</b> and trace them through time (−3m faint → now solid) · dots are uniform size here.</div>
     <div class="c3-bar">Third axis (Z):
       <select onchange="set3DZ(this.value)">${opts}</select></div>
     <svg id="c3-svg" viewBox="0 0 ${C3.w} ${C3.h}" class="scatter3d"></svg>
@@ -1795,11 +1801,11 @@ function draw3D() {
   const svg = document.getElementById('c3-svg');
   if (!svg || !scatterData) return;
   const H = C3.H;
-  const pts0 = scatterData.points.filter(p => p.z && p.z[z3key] != null);
-  const zs = pts0.map(p => p.z[z3key]);
+  const pts0 = scatterData.points.filter(p => zNow(p) != null);
+  const zs = pts0.map(zNow);
   const zmin = Math.min(...zs), zmax = Math.max(...zs), zspan = (zmax - zmin) || 1;
   const nx = v => Math.max(-15, Math.min(15, v)) / 15 * H;
-  const nz = v => ((v - zmin) / zspan * 2 - 1) * H;   // chosen Z mapped to [-H,H]
+  const nz = v => Math.max(-1.08, Math.min(1.08, (v - zmin) / zspan * 2 - 1)) * H;
 
   const seg = [];
   const line = (a, b, cls) => { const p = project3(...a), q = project3(...b);
@@ -1820,18 +1826,40 @@ function draw3D() {
     + lbl([0, 0, H + 16], Z3[z3key].label + ' ↗')
     + lbl([0, 0, -H - 8], '↙ low ' + z3key);
 
-  const proj = pts0.map(p => {
+  // static dots (selected ones are drawn by their trail instead), back-to-front
+  const proj = pts0.filter(p => !trailSel.has(p.region)).map(p => {
     const [x, y, s] = p.trail[3];
-    return { p, x, y, s, pr: project3(nx(x), nx(y), nz(p.z[z3key])) };
-  }).sort((a, b) => a.pr.depth - b.pr.depth);            // back to front
+    return { p, x, y, s, pr: project3(nx(x), nx(y), nz(zNow(p))) };
+  }).sort((a, b) => a.pr.depth - b.pr.depth);
   const dmin = Math.min(...proj.map(o => o.pr.depth)), dmax = Math.max(...proj.map(o => o.pr.depth)) || 1;
   const dots = proj.map(o => {
     const cls = (o.x >= 0 && o.y >= 0) ? 'q-star' : (o.x < 0 && o.y < 0) ? 'q-prob' : 'q-mixed';
     const t = dmax > dmin ? (o.pr.depth - dmin) / (dmax - dmin) : 1;
-    const tip = `${o.p.region} · ${o.p.territory} — MS dev ${o.x > 0 ? '+' : ''}${o.x}pp · growth dev ${o.y > 0 ? '+' : ''}${o.y}pp · ${Z3[z3key].label}: ${Z3[z3key].fmt(o.p.z[z3key])} · €${(o.s / 1e6).toFixed(2)}M`;
-    return `<circle class="dot ${cls}" cx="${o.pr.sx.toFixed(1)}" cy="${o.pr.sy.toFixed(1)}" r="${dotR(o.s)}" opacity="${(0.4 + t * 0.55).toFixed(2)}" data-tip="${tip}"></circle>`;
+    const tip = `${o.p.region} · ${o.p.territory} — MS dev ${o.x > 0 ? '+' : ''}${o.x}pp · growth dev ${o.y > 0 ? '+' : ''}${o.y}pp · ${Z3[z3key].label}: ${Z3[z3key].fmt(zNow(o.p))} · €${(o.s / 1e6).toFixed(2)}M (click to trace)`;
+    return `<circle class="dot ${cls}" cx="${o.pr.sx.toFixed(1)}" cy="${o.pr.sy.toFixed(1)}" r="${R3}" opacity="${(0.4 + t * 0.55).toFixed(2)}" data-tip="${tip}" onclick="selectRegion('${esc3(o.p.region)}')"></circle>`;
   }).join('');
-  svg.innerHTML = seg.join('') + labels + dots;
+
+  // selected regions: trace the 4-month path in (share, growth, Z) space
+  const sel = scatterData.points.filter(p => trailSel.has(p.region) && zNow(p) != null);
+  const trails = sel.map((p, idx) => {
+    const col = TRAIL_COLORS[idx % TRAIL_COLORS.length];
+    const pr = p.trail.map(([x, y], k) => {
+      const zv = p.z[z3key][k];
+      return project3(nx(x), nx(y), nz(zv == null ? zNow(p) : zv));
+    });
+    const poly = pr.map(q => `${q.sx.toFixed(1)},${q.sy.toFixed(1)}`).join(' ');
+    const wn = ['−3m', '−2m', '−1m', 'now'];
+    const td = pr.map((q, k) => {
+      const zv = p.z[z3key][k];
+      const tip = `${p.region} · ${wn[k]} — ${Z3[z3key].label}: ${zv == null ? '—' : Z3[z3key].fmt(zv)}`;
+      return `<circle cx="${q.sx.toFixed(1)}" cy="${q.sy.toFixed(1)}" r="${R3}" fill="${col}" stroke="#fff" stroke-width="0.6" opacity="${(0.25 + k / 3 * 0.75).toFixed(2)}" data-tip="${tip}" onclick="selectRegion('${esc3(p.region)}')"></circle>`;
+    }).join('');
+    const last = pr[3];
+    return `<polyline points="${poly}" fill="none" stroke="${col}" stroke-width="1.8" opacity="0.7"/>${td}` +
+      `<text class="c3-lbl" x="${(last.sx + 8).toFixed(1)}" y="${(last.sy + 3).toFixed(1)}" fill="${col}" text-anchor="start">${p.region}</text>`;
+  }).join('');
+
+  svg.innerHTML = seg.join('') + labels + dots + trails;
 }
 
 // drag-to-rotate (handlers are global; only act on the 3-D svg)

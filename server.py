@@ -172,13 +172,20 @@ def api_trails(params):
         rows = con.execute("""
             WITH s AS (
               SELECT region_name, territory_name, year_month, rank_sales_eur AS rk,
-                market_share AS msh, units AS un, growth_py_sales AS gpy,
                 mshare_deviation AS x0, LAG(mshare_deviation,1) OVER w AS x1,
                 LAG(mshare_deviation,2) OVER w AS x2, LAG(mshare_deviation,3) OVER w AS x3,
                 growth_deviation AS y0, LAG(growth_deviation,1) OVER w AS y1,
                 LAG(growth_deviation,2) OVER w AS y2, LAG(growth_deviation,3) OVER w AS y3,
                 sales_eur AS s0, LAG(sales_eur,1) OVER w AS s1,
-                LAG(sales_eur,2) OVER w AS s2, LAG(sales_eur,3) OVER w AS s3
+                LAG(sales_eur,2) OVER w AS s2, LAG(sales_eur,3) OVER w AS s3,
+                rank_sales_eur AS rk0, LAG(rank_sales_eur,1) OVER w AS rk1,
+                LAG(rank_sales_eur,2) OVER w AS rk2, LAG(rank_sales_eur,3) OVER w AS rk3,
+                market_share AS m0, LAG(market_share,1) OVER w AS m1,
+                LAG(market_share,2) OVER w AS m2, LAG(market_share,3) OVER w AS m3,
+                units AS u0, LAG(units,1) OVER w AS u1,
+                LAG(units,2) OVER w AS u2, LAG(units,3) OVER w AS u3,
+                growth_py_sales AS g0, LAG(growth_py_sales,1) OVER w AS g1,
+                LAG(growth_py_sales,2) OVER w AS g2, LAG(growth_py_sales,3) OVER w AS g3
               FROM region_metrics WHERE brand_name=? AND period_type='MAT'
               WINDOW w AS (PARTITION BY region_name ORDER BY year_month)
             ) SELECT * FROM s WHERE year_month=? AND x3 IS NOT NULL AND y3 IS NOT NULL
@@ -186,18 +193,20 @@ def api_trails(params):
     finally:
         con.close()
     rnd = lambda v: round(v, 2)
-    # each trail point: [mshare_dev, growth_dev, sales_eur]  (oldest -> now)
-    # z: candidate third axes for the 3-D view (visualisation only, not findings)
-    out = [{"region": r["region_name"], "territory": r["territory_name"], "rank": r["rk"],
-            "z": {"rank": r["rk"],
-                  "share": None if r["msh"] is None else rnd(r["msh"]),
-                  "units": None if r["un"] is None else round(r["un"]),
-                  "growth": None if r["gpy"] is None else rnd(r["gpy"])},
+    # each trail point: [mshare_dev, growth_dev, sales_eur]  (oldest -> now);
+    # z holds a 4-point series per candidate third axis for the 3-D view
+    out = []
+    for r in rows:
+        out.append({
+            "region": r["region_name"], "territory": r["territory_name"], "rank": r["rk"],
+            "z": {"rank":   [r["rk3"], r["rk2"], r["rk1"], r["rk0"]],
+                  "share":  [None if r[f"m{k}"] is None else rnd(r[f"m{k}"]) for k in (3, 2, 1, 0)],
+                  "units":  [None if r[f"u{k}"] is None else round(r[f"u{k}"]) for k in (3, 2, 1, 0)],
+                  "growth": [None if r[f"g{k}"] is None else rnd(r[f"g{k}"]) for k in (3, 2, 1, 0)]},
             "trail": [[rnd(r["x3"]), rnd(r["y3"]), round(r["s3"])],
                       [rnd(r["x2"]), rnd(r["y2"]), round(r["s2"])],
                       [rnd(r["x1"]), rnd(r["y1"]), round(r["s1"])],
-                      [rnd(r["x0"]), rnd(r["y0"]), round(r["s0"])]]}
-           for r in rows]
+                      [rnd(r["x0"]), rnd(r["y0"]), round(r["s0"])]]})
     return {"brand": brand, "asof": asof, "period": "MAT", "points": out}
 
 
