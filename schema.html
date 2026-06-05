@@ -1726,8 +1726,13 @@ async function showFindingDefs() {
     return `<div class="def-card" style="border-left-color:${col[id]}"><h4>${r.label}</h4><p>${r.description}</p>` +
            `<div class="rule">${escapeHtml(r.rule)}</div>${r.default_action ? `<div class="act">→ ${r.default_action}</div>` : ''}</div>`;
   }).join('');
-  openInfo('Finding definitions · market-share × FCST',
-    `<div class="info-note">How each finding is defined. Severity then combines the market-share finding with RollQ forecast attainment (both / either). Source: <code>knowledge_definitions.json</code> → <code>findings.py</code>.</div>${cards}`);
+  const sevCard = `<div class="def-card" style="border-left-color:#888"><h4>Severity — market-share × forecast</h4>` +
+    `<p>Each finding is graded by combining two axes. The number in a row like <strong>critical (7)</strong> is the <em>score</em>; the word is its band.</p>` +
+    `<div class="rule">${escapeHtml('score = market-share severity + forecast severity\n\nmarket-share = finding base (Bad→worse 3 · Bad / Sudden 2 · Recovery 1)\n               + 1 if the move is very loud (V ≥ 2)        → 1–4\nforecast (RollQ shortfall) = meeting 0 · miss <15pp 1 · 15–25pp 2 · ≥25pp 3')}</div>` +
+    `<p>Bands: <span class="rel-critical">critical ≥5</span> · <span class="rel-high">high ≥3</span> · <span class="rel-moderate">moderate ≥2</span> · low &lt;2. ` +
+    `So <strong>critical (7)</strong> = market-share 4 + forecast 3 — a very loud worsening region that is also badly missing plan.</p></div>`;
+  openInfo('Finding & severity definitions',
+    `<div class="info-note">How each finding is defined, and how severity grades it. Source: <code>knowledge_definitions.json</code> → <code>findings.py</code>.</div>${sevCard}${cards}`);
 }
 
 function lensHtml() {
@@ -1799,9 +1804,10 @@ function setInsightUser(u) {
 }
 
 function sevBar(sev) {
-  const pct = Math.round(sev.score / 6 * 100);
-  return `<span class="sevbar sev-${sev.band}"><i style="width:${pct}%"></i></span>` +
-         `<span class="rel-${sev.band}">${sev.band}</span> <span class="spark">(${sev.score})</span>`;
+  const pct = Math.max(8, Math.round(sev.score / 7 * 100));
+  const tip = `Severity ${sev.band} · score ${sev.score} = market-share ${sev.ms} + forecast ${sev.fcst}`;
+  return `<span class="sevbar sev-${sev.band}" title="${tip}"><i style="width:${pct}%"></i></span>` +
+         `<span class="rel-${sev.band}" title="${tip}">${sev.band}</span> <span class="spark" title="${tip}">(${sev.score})</span>`;
 }
 function fpill(r) { return `<span class="fpill f-${r.finding}">${r.label}</span>`; }
 function fcstCell(r) {
@@ -1864,7 +1870,11 @@ function renderFindings() {
   const rows = filter ? fndData.rows.filter(r => r.finding === filter) : fndData.rows;
   document.getElementById('fnd-summary').innerHTML = summaryChips(fndData, fndData.rows);
   const head = ['Severity', 'Finding', 'Territory', 'Region', 'Share', 'Peer gap', 'Trajectory (m3→now)', 'V', 'net', 'ρ', 'shape', 'FCST', 'rank'];
-  const TIP = { V: 1, net: 1, 'ρ': 1, shape: 1 };   // hover definitions for the strength columns
+  const HDEF = {
+    Severity: 'Severity = market-share severity + forecast severity. Market-share = finding base (Bad→worse 3, Bad/Sudden 2, Recovery 1) +1 if very loud (V 2+). Forecast = RollQ shortfall (meeting 0, miss under 15pp 1, 15-25pp 2, 25pp+ 3). Bands: critical 5+, high 3+, moderate 2+, low under 2. The (number) is the score.',
+    'Peer gap': 'Market-share deviation from the peer (national) average, in pp. Negative = below peers.',
+    V: SIG_DEFS['V'], net: SIG_DEFS['net'], 'ρ': SIG_DEFS['ρ'], shape: SIG_DEFS['shape'],
+  };
   const body = rows.map(r => { const s = r.strength; return `<tr>
     <td>${sevBar(r.severity)}</td>
     <td>${fpill(r)}</td>
@@ -1879,8 +1889,8 @@ function renderFindings() {
     <td><span class="pill shape-${s.shape}">${s.shape}</span></td>
     <td class="num">${fcstCell(r)}</td>
     <td class="num">${r.mat_rank}</td></tr>`; }).join('');
-  const thead = head.map(h => (TIP[h] && SIG_DEFS[h])
-    ? `<th class="has-def" title="${SIG_DEFS[h]}">${h}</th>` : `<th>${h}</th>`).join('');
+  const thead = head.map(h => HDEF[h]
+    ? `<th class="has-def" title="${HDEF[h]}">${h}</th>` : `<th>${h}</th>`).join('');
   document.getElementById('fnd-results').innerHTML =
     `<div class="fnd-section">Objective catalog — every flagged region (${rows.length})</div>` +
     `<table class="sig"><thead><tr>${thead}</tr></thead><tbody>${body}</tbody></table>`;
