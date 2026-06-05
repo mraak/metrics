@@ -906,6 +906,15 @@ body.dark-theme .rel-critical { color: #e57368; }
 body.dark-theme .rel-high { color: #e0a050; }
 .sig-error { color: #cc3322; font-size: 12px; }
 
+/* custom hover tooltip (reliable replacement for native title) */
+#tt {
+  position: fixed; z-index: 5000; max-width: 340px;
+  background: #1d2230; color: #eaeef5; font-size: 12px; line-height: 1.5;
+  padding: 7px 10px; border-radius: 6px; box-shadow: 0 6px 20px rgba(0,0,0,0.28);
+  pointer-events: none; opacity: 0; transition: opacity 0.08s;
+}
+#tt.show { opacity: 1; }
+
 </style>
 </head>
 <body>
@@ -1683,6 +1692,35 @@ function sortBy(i) {
   else { sortState.idx = i; sortState.dir = sigCols[i].type === 'str' ? 1 : -1; }
   renderSignals();
 }
+
+// ── Custom hover tooltips (reliable replacement for native `title`) ──
+(function () {
+  const tt = document.createElement('div'); tt.id = 'tt'; document.body.appendChild(tt);
+  let cur = null;
+  function place(e) {
+    const r = tt.getBoundingClientRect();
+    let x = e.clientX + 14, y = e.clientY + 18;
+    if (x + r.width > window.innerWidth - 8) x = e.clientX - r.width - 12;
+    if (y + r.height > window.innerHeight - 8) y = e.clientY - r.height - 14;
+    tt.style.left = Math.max(6, x) + 'px';
+    tt.style.top = Math.max(6, y) + 'px';
+  }
+  document.addEventListener('mouseover', e => {
+    const el = e.target.closest ? e.target.closest('[title],[data-tip]') : null;
+    if (el) {                                   // migrate native title -> data-tip (avoids double tooltip)
+      const t = el.getAttribute('title');
+      if (t != null) { el.setAttribute('data-tip', t); el.removeAttribute('title'); }
+    }
+    if (el !== cur) {
+      cur = el;
+      const tip = el && el.getAttribute('data-tip');
+      if (tip) { tt.textContent = tip; tt.classList.add('show'); place(e); }
+      else tt.classList.remove('show');
+    }
+  });
+  document.addEventListener('mousemove', e => { if (cur) place(e); });
+  document.addEventListener('mouseleave', () => { tt.classList.remove('show'); cur = null; });
+})();
 
 /* ── Findings tab ── */
 let findingsInited = false, insightsInited = false, fndData = null, insData = null, insUser = 'manager';
