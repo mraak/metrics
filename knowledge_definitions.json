@@ -169,14 +169,15 @@
     "star": {
       "label": "Star",
       "method": "rule",
+      "impl": "findings.py",
       "requires_signals": [
-        "growth_py_sales_mat_momentum",
-        "mshare_dev_mat_trend_3m"
+        "mshare_dev_mat_step_1m_3m",
+        "growth_deviation_mat_step_1m_3m"
       ],
-      "rule": "growth_gap >= +10pp AND growth_momentum == WIDENING AND position_gap > 0 AND position_momentum == IMPROVING",
-      "strength_floor": "high",
-      "description": "Exceptional growth, pulling further ahead of peers, gaining market share.",
-      "default_action": "Monitor sustainability; replicate practices across similar regions."
+      "rule": "mshare_deviation now >= 0  AND  growth_deviation now >= 0 (ahead on both).",
+      "strength_floor": "low",
+      "description": "Ahead of the peer average on both share and growth. Healthy.",
+      "default_action": "Sustain; learn what's working to replicate."
     },
     "slowing_giant": {
       "label": "Slowing Giant",
@@ -262,66 +263,45 @@
       "description": "Volatility itself is the finding: high loudness, ~zero coherence (e.g. -10 then +10). Reading a trend into it would be wrong — there is no net direction.",
       "default_action": "Check data quality, demand spikiness, or stocking/ordering noise before treating any single point as a trend."
     },
-    "_market_share_x_fcst": "The five findings below grade market-share-deviation trajectory (level + shape) against RollQ forecast attainment. Combined severity = ms_base(+loudness) + fcst_shortfall, so it rises when BOTH axes are bad and still fires on EITHER. Rank is NOT a trigger (re-enters per persona at Tier 5). Thresholds + implementation: findings.py.",
-    "bad_to_worse": {
-      "label": "Bad → worse",
+    "_share_x_growth": "Region findings on the SHARE × GROWTH quadrant: position = mshare_deviation, momentum = growth_deviation (both vs volume-weighted national). Quadrant by current level; severity = ms_sev + growth_sev (each 0-3). No FCST at region level. Impl: findings.py.",
+    "losing_both": {
+      "label": "Losing on both",
       "method": "rule",
       "impl": "findings.py",
       "requires_signals": [
-        "mshare_dev_mat_step_1m_3m"
+        "mshare_dev_mat_step_1m_3m",
+        "growth_deviation_mat_step_1m_3m"
       ],
-      "rule": "level=bad (now < -3pp) AND net < 0 AND |coherence| >= 0.5  (loud clean decline while already below average)  +  FCST severity",
+      "rule": "mshare_deviation now < 0  AND  growth_deviation now < 0  (below peers on share AND growth). Severity rises if either axis is deteriorating / loud.",
       "strength_floor": "high",
-      "description": "Already below the peer average and still sliding on a clean downward trend. The most urgent share finding — losing ground from a weak base.",
-      "default_action": "Diagnose and intervene; check account-level orders."
+      "description": "Below the peer average on BOTH market share and growth — the red cell. Losing position and not out-growing to recover.",
+      "default_action": "Diagnose; this is where real share is bleeding. Check accounts."
     },
-    "bad_not_improving": {
-      "label": "Bad & not improving",
+    "slipping": {
+      "label": "Slipping",
       "method": "rule",
       "impl": "findings.py",
       "requires_signals": [
-        "mshare_dev_mat_step_1m_3m"
+        "mshare_dev_mat_step_1m_3m",
+        "growth_deviation_mat_step_1m_3m"
       ],
-      "rule": "level=bad (now < -3pp) AND not improving (net <= +0.3) AND not a clean steep decline  +  FCST severity",
+      "rule": "mshare_deviation now >= 0 (ahead on share)  AND  growth_deviation now < 0 (under-growing).",
       "strength_floor": "moderate",
-      "description": "Below the peer average and going nowhere — flat or drifting, with no sign of recovery. Stuck.",
-      "default_action": "Find what would unstick it; prioritise by FCST gap."
+      "description": "Still ahead on share but growing slower than the brand — momentum is turning. A strong position starting to erode.",
+      "default_action": "Protect the position before the share lead is spent."
     },
-    "ok_sudden_drop": {
-      "label": "OK-ish but suddenly deteriorating",
+    "catching_up": {
+      "label": "Catching up",
       "method": "rule",
       "impl": "findings.py",
       "requires_signals": [
-        "mshare_dev_mat_step_1m_3m"
+        "mshare_dev_mat_step_1m_3m",
+        "growth_deviation_mat_step_1m_3m"
       ],
-      "rule": "level=ok (-3pp <= now <= +1pp) AND sudden recent down-break (last step <= -0.8 after a stable prior)  +  FCST severity",
-      "strength_floor": "moderate",
-      "description": "Was sitting near the peer average, then broke sharply downward this month. Catch it before it becomes a slide.",
-      "default_action": "Investigate the recent break before it compounds."
-    },
-    "good_sudden_drop": {
-      "label": "Good but suddenly deteriorating",
-      "method": "rule",
-      "impl": "findings.py",
-      "requires_signals": [
-        "mshare_dev_mat_step_1m_3m"
-      ],
-      "rule": "level=good (now > +1pp) AND sudden recent down-break (last step <= -0.8 after a stable prior)  +  FCST severity",
-      "strength_floor": "moderate",
-      "description": "Ahead of the peer average but slipped sharply this month — a strong position starting to crack.",
-      "default_action": "Protect the position; find the cause of the break."
-    },
-    "bad_getting_better": {
-      "label": "Bad but getting better",
-      "method": "rule",
-      "impl": "findings.py",
-      "requires_signals": [
-        "mshare_dev_mat_step_1m_3m"
-      ],
-      "rule": "level=bad (now < -3pp) AND improving (net > +0.3)  +  FCST severity",
+      "rule": "mshare_deviation now < 0 (below on share)  AND  growth_deviation now >= 0 (out-growing).",
       "strength_floor": "low",
-      "description": "Below the peer average but genuinely recovering — the gap is closing. Low concern on share, though forecast may still flag it.",
-      "default_action": "Keep pushing; confirm the recovery holds."
+      "description": "Below the peer average on share but out-growing the brand — closing the gap. Recovering, low concern.",
+      "default_action": "Keep supporting what's working."
     }
   },
   "insight_framings": {

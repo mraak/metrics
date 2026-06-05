@@ -138,15 +138,11 @@ def territory_metrics(brand, asof=None):
         g_pp = ((cur['own'] - pp['own']) / pp['own'] * 100) if pp and pp['own'] else None
         gvf = (g_py - nat_fcst_growth) if (g_py is not None and nat_fcst_growth is not None) else None
         devser = [at(off)['dev'] if at(off) else None for off in (3, 2, 1, 0)]
-        sig = fin = sev = None
+        sig = None
         if all(x is not None for x in devser):
             devser = [round(x, 2) for x in devser]
             sig = knowledge.signal_strength(devser, direction='higher_is_better',
                                             defs=defs, kind='position')
-            fid, _ = findings.classify(devser, sig)
-            if fid:
-                fin = fid
-                sev = findings.severity(fid, sig, gvf)
         out.append({
             'territory': t,
             'region_count': rc.get(t, 0),
@@ -159,8 +155,6 @@ def territory_metrics(brand, asof=None):
             'growth_vs_fcst': None if gvf is None else round(gvf, 1),
             'dev_series': devser if all(x is not None for x in devser) else None,
             'signal': sig,
-            'finding': fin, 'finding_label': findings.FINDINGS[fin][0] if fin else None,
-            'severity': sev,
         })
     out.sort(key=lambda x: -x['mat_sales'])
     if national is not None:

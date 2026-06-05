@@ -795,16 +795,14 @@ body.dark-theme .fnd-chip { border-color: #1e2232; }
 .fnd-section { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: #999; margin: 6px 0 10px; }
 
 .fpill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
-.f-bad_to_worse { background: #ffdede; color: #bb2222; }
-.f-bad_not_improving { background: #ffe9cc; color: #aa5500; }
-.f-ok_sudden_drop { background: #fff3cc; color: #9a7700; }
-.f-good_sudden_drop { background: #eadcff; color: #6a3fb0; }
-.f-bad_getting_better { background: #d8f5e3; color: #1a8a55; }
-body.dark-theme .f-bad_to_worse { background: #3a1414; color: #e57368; }
-body.dark-theme .f-bad_not_improving { background: #332010; color: #e0a050; }
-body.dark-theme .f-ok_sudden_drop { background: #2f2a10; color: #d9c24a; }
-body.dark-theme .f-good_sudden_drop { background: #241a38; color: #b48af0; }
-body.dark-theme .f-bad_getting_better { background: #16251a; color: #8ec85a; }
+.f-losing_both { background: #ffdede; color: #bb2222; }
+.f-slipping { background: #ffe9cc; color: #aa5500; }
+.f-catching_up { background: #e0eaff; color: #2255bb; }
+.f-star { background: #d8f5e3; color: #1a8a55; }
+body.dark-theme .f-losing_both { background: #3a1414; color: #e57368; }
+body.dark-theme .f-slipping { background: #332010; color: #e0a050; }
+body.dark-theme .f-catching_up { background: #16203a; color: #7ea0e8; }
+body.dark-theme .f-star { background: #16251a; color: #8ec85a; }
 
 .sevbar { display: inline-block; width: 46px; height: 7px; border-radius: 4px; background: #eee; vertical-align: middle; margin-right: 4px; }
 body.dark-theme .sevbar { background: #1a1f2e; }
@@ -1284,11 +1282,10 @@ body.dark-theme .trail-hint { color: #777; }
         <span><label>Brand</label><select id="fnd-brand" onchange="loadFindings()"></select></span>
         <span><label>Finding</label><select id="fnd-filter" onchange="renderFindings()">
           <option value="">all</option>
-          <option value="bad_to_worse">Bad → worse</option>
-          <option value="bad_not_improving">Bad &amp; not improving</option>
-          <option value="ok_sudden_drop">OK-ish, sudden drop</option>
-          <option value="good_sudden_drop">Good, sudden drop</option>
-          <option value="bad_getting_better">Bad → better</option>
+          <option value="losing_both">🔴 Losing on both</option>
+          <option value="slipping">⚠ Slipping</option>
+          <option value="catching_up">↗ Catching up</option>
+          <option value="star">⭐ Star</option>
         </select></span>
         <button class="btn small" onclick="showFindingDefs()">ℹ︎ Definitions</button>
         <span class="signals-meta" id="fnd-meta"></span>
@@ -1892,20 +1889,19 @@ function showSignalSQL() {
 
 async function showFindingDefs() {
   const kn = await getKnowledge();
-  const ids = ['bad_to_worse', 'bad_not_improving', 'ok_sudden_drop', 'good_sudden_drop', 'bad_getting_better'];
-  const col = { bad_to_worse: '#bb2222', bad_not_improving: '#aa5500', ok_sudden_drop: '#9a7700', good_sudden_drop: '#6a3fb0', bad_getting_better: '#1a8a55' };
+  const ids = ['losing_both', 'slipping', 'catching_up', 'star'];
+  const col = { losing_both: '#bb2222', slipping: '#aa5500', catching_up: '#2255bb', star: '#1a8a55' };
   const cards = ids.map(id => {
     const r = kn.finding_recipes[id]; if (!r) return '';
     return `<div class="def-card" style="border-left-color:${col[id]}"><h4>${r.label}</h4><p>${r.description}</p>` +
            `<div class="rule">${escapeHtml(r.rule)}</div>${r.default_action ? `<div class="act">→ ${r.default_action}</div>` : ''}</div>`;
   }).join('');
-  const sevCard = `<div class="def-card" style="border-left-color:#888"><h4>Severity — market-share × forecast</h4>` +
-    `<p>Each finding is graded by combining two axes. The number in a row like <strong>critical (7)</strong> is the <em>score</em>; the word is its band.</p>` +
-    `<div class="rule">${escapeHtml('score = market-share severity + forecast severity\n\nmarket-share = finding base (Bad→worse 3 · Bad / Sudden 2 · Recovery 1)\n               + 1 if the move is very loud (V ≥ 2)        → 1–4\nforecast (RollQ shortfall) = meeting 0 · miss <15pp 1 · 15–25pp 2 · ≥25pp 3')}</div>` +
-    `<p>Bands: <span class="rel-critical">critical ≥5</span> · <span class="rel-high">high ≥3</span> · <span class="rel-moderate">moderate ≥2</span> · low &lt;2. ` +
-    `So <strong>critical (7)</strong> = market-share 4 + forecast 3 — a very loud worsening region that is also badly missing plan.</p></div>`;
+  const sevCard = `<div class="def-card" style="border-left-color:#888"><h4>Two axes — market share × growth</h4>` +
+    `<p>Each region sits in a quadrant by its current level on two peer-relative axes, and severity grades how bad / deteriorating each axis is. The number in a row like <strong>critical (6)</strong> is the <em>score</em>; the word is its band.</p>` +
+    `<div class="rule">${escapeHtml('position  = mshare_deviation  (share − volume-weighted national)\nmomentum  = growth_deviation  (YoY growth − volume-weighted national YoY)\n\nseverity per axis (0-3): +1 below peers · +1 deteriorating · +1 both & loud\nscore = ms_sev + growth_sev   (0-6)')}</div>` +
+    `<p>Bands: <span class="rel-critical">critical ≥5</span> · <span class="rel-high">high ≥3</span> · <span class="rel-moderate">moderate ≥2</span> · low &lt;2. No FCST at region level (there is no regional forecast); attainment lives at national.</p></div>`;
   openInfo('Finding & severity definitions',
-    `<div class="info-note">How each finding is defined, and how severity grades it. Source: <code>knowledge_definitions.json</code> → <code>findings.py</code>.</div>${sevCard}${cards}`);
+    `<div class="info-note">Each finding is a quadrant on the share × growth plane; severity grades both axes. Source: <code>knowledge_definitions.json</code> → <code>findings.py</code>.</div>${sevCard}${cards}`);
 }
 
 function lensHtml() {
@@ -1977,16 +1973,17 @@ function setInsightUser(u) {
 }
 
 function sevBar(sev) {
-  const pct = Math.max(8, Math.round(sev.score / 7 * 100));
-  const tip = `Severity ${sev.band} · score ${sev.score} = market-share ${sev.ms} + forecast ${sev.fcst}`;
+  const pct = Math.max(8, Math.round(sev.score / 6 * 100));
+  const tip = `Severity ${sev.band} · score ${sev.score} = market-share ${sev.ms} + growth ${sev.growth} (each 0-3)`;
   return `<span class="sevbar sev-${sev.band}" title="${tip}"><i style="width:${pct}%"></i></span>` +
          `<span class="rel-${sev.band}" title="${tip}">${sev.band}</span> <span class="spark" title="${tip}">(${sev.score})</span>`;
 }
 function fpill(r) { return `<span class="fpill f-${r.finding}">${r.label}</span>`; }
-function fcstCell(r) {
-  if (r.fcst_rollq === null) return '—';
-  return r.fcst_meets ? `<span class="fcst-ok">+${r.fcst_rollq}pp</span>`
-                      : `<span class="fcst-miss">${r.fcst_rollq}pp</span>`;
+const POSITIVE = new Set(['star', 'catching_up']);   // not "problem" findings
+function growthPhrase(r) {
+  const g = r.growth_now;
+  return g >= 0 ? `<span class="fcst-ok">out-growing peers (+${g.toFixed(1)}pp)</span>`
+                : `<span class="fcst-miss">under-growing (${g.toFixed(1)}pp)</span>`;
 }
 
 /* Sales-Manager insight prose: foreground the month-over-month (−1m) move. */
@@ -2016,14 +2013,13 @@ function reminderBadge(r) {
   return '';
 }
 function insightSentence(r) {
-  const sm = sinceLast(r), fc = fcstPhrase(r), pg = peerGap(r);
+  const sm = sinceLast(r), pg = peerGap(r), gp = growthPhrase(r);
   const reg = `<strong>${r.region}</strong> <span class="rank-tag">rank ${r.mat_rank}</span>`;
   switch (r.finding) {
-    case 'bad_to_worse':       return `${reg} — worsening: ${pg}; ${sm}; ${fc}.`;
-    case 'bad_not_improving':  return `${reg} — stuck below peers: ${pg}; ${sm}; ${fc}.`;
-    case 'ok_sudden_drop':     return `${reg} — near the peer average (${pg}) but dropped sharply last month — ${sm}; ${fc}.`;
-    case 'good_sudden_drop':   return `${reg} — ahead of peers (${pg}) but slipped last month — ${sm}; ${fc}.`;
-    case 'bad_getting_better': return `${reg} — recovering: ${pg}; ${sm}; ${fc}.`;
+    case 'losing_both': return `${reg} — losing on both: ${pg}, ${sm}; and ${gp}.`;
+    case 'slipping':    return `${reg} — slipping: ${pg} (ahead on share) but ${gp}; ${sm}.`;
+    case 'catching_up': return `${reg} — catching up: ${pg} but ${gp}; ${sm}.`;
+    case 'star':        return `${reg} — star: ${pg} and ${gp}.`;
   }
 }
 function sevTag(r) { return ` <span class="rel-${r.severity.band}">[${r.severity.band}]</span>`; }
@@ -2038,9 +2034,12 @@ function summaryChips(data, rows) {
 
 // Shared column-header tooltips for the findings / insight tables.
 const HDEFS = {
-  'Severity': 'Severity = market-share severity + forecast severity. Market-share = finding base (Bad→worse 3, Bad/Sudden 2, Recovery 1) +1 if very loud (V 2+). Forecast = RollQ shortfall (meeting 0, miss under 15pp 1, 15-25pp 2, 25pp+ 3). Bands: critical 5+, high 3+, moderate 2+, low under 2. The (number) is the score.',
-  'Peer gap': 'Market-share deviation from the peer (national) average, in pp. Negative = below peers.',
-  'Trajectory (m3→now)': 'The market-share gap (mshare_deviation, MAT) at the last four months: 3 months ago, then 2, 1, and now — left to right. Each point is the 12-month rolling deviation from the peer average that month; V / net / ρ are computed from these four points.',
+  'Severity': 'Severity = market-share severity + growth severity (each 0-3, total 0-6). Per axis: +1 if below peers (now<0), +1 if deteriorating (trajectory net<0), +1 more if both AND a loud move. Bands: critical 5+, high 3+, moderate 2+, low under 2. The (number) is the score.',
+  'MS dev': 'Market-share deviation: region market share − the brand’s volume-weighted national market share, in pp. Negative = below peers.',
+  'growth dev': 'Growth deviation: region YoY (PY) growth − the brand’s volume-weighted national YoY growth, in pp. Negative = under-growing the brand.',
+  'MS shape': 'Shape of the market-share trajectory (MAT, last 4 months): trend / unstable / mixed / quiet.',
+  'growth shape': 'Shape of the growth-deviation trajectory (MAT, last 4 months): trend / unstable / mixed / quiet.',
+  'MS traj.': 'Market-share deviation (MAT) at the last four months: 3 months ago → now (left to right).',
   'V': SIG_DEFS['V'], 'net': SIG_DEFS['net'], 'ρ': SIG_DEFS['ρ'], 'shape': SIG_DEFS['shape'],
 };
 function th(h) { return HDEFS[h] ? `<th class="has-def" title="${HDEFS[h]}">${h}</th>` : `<th>${h}</th>`; }
@@ -2051,20 +2050,17 @@ function renderFindings() {
   const filter = document.getElementById('fnd-filter').value;
   const rows = filter ? fndData.rows.filter(r => r.finding === filter) : fndData.rows;
   document.getElementById('fnd-summary').innerHTML = summaryChips(fndData, fndData.rows);
-  const head = ['Severity', 'Finding', 'Territory', 'Region', 'Share', 'Peer gap', 'Trajectory (m3→now)', 'V', 'net', 'ρ', 'shape', 'FCST', 'rank'];
-  const body = rows.map(r => { const s = r.strength; return `<tr>
+  const head = ['Severity', 'Finding', 'Territory', 'Region', 'Share', 'MS dev', 'MS shape', 'growth dev', 'growth shape', 'rank'];
+  const body = rows.map(r => { const s = r.strength, g = r.growth_strength; return `<tr>
     <td>${sevBar(r.severity)}</td>
     <td>${fpill(r)}</td>
     <td>${r.territory}</td>
     <td>${r.region}</td>
     <td class="num">${r.market_share != null ? r.market_share + '%' : '—'}</td>
     <td class="num">${signed(r.now)}</td>
-    <td class="spark">${fmtSeries(r.series)}</td>
-    <td class="num">${s.magnitude.toFixed(2)}</td>
-    <td class="num">${signed(s.net)}</td>
-    <td class="num">${signed(s.coherence)}</td>
     <td><span class="pill shape-${s.shape}">${s.shape}</span></td>
-    <td class="num">${fcstCell(r)}</td>
+    <td class="num">${signed(r.growth_now)}</td>
+    <td><span class="pill shape-${g.shape}">${g.shape}</span></td>
     <td class="num">${r.mat_rank}</td></tr>`; }).join('');
   const thead = head.map(th).join('');
   document.getElementById('fnd-results').innerHTML =
@@ -2147,7 +2143,7 @@ function renderTerritoryTable(td) {
 function territoryVerdict(name, rs) {
   const t = insTerr && insTerr.territories.find(x => x.territory === name);
   if (!t) return '';
-  const troubled = rs.filter(r => r.finding !== 'bad_getting_better').length;
+  const troubled = rs.filter(r => !POSITIVE.has(r.finding)).length;
   const crit = rs.filter(r => r.severity.band === 'critical').length;
   const esc = rs.filter(r => r.escalate && r.mat_rank >= BIG_RANK).length;
   const grow = t.growth_py == null ? '' : `${t.growth_py > 0 ? 'growing' : 'declining'} ${t.growth_py > 0 ? '+' : ''}${t.growth_py}% YoY`;
@@ -2192,8 +2188,8 @@ function renderManager(allRows) {
     const small = other.filter(r => r.mat_rank < BIG_RANK);
     const bigHtml = big.map(r => `<li>${insightSentence(r)}${reminderBadge(r)}${sevTag(r)}</li>`).join('');
     const smName = r => `${r.region} <span class="rank-tag">r${r.mat_rank}</span>`;
-    const sWorse = small.filter(r => r.finding !== 'bad_getting_better').map(smName);
-    const sBetter = small.filter(r => r.finding === 'bad_getting_better').map(smName);
+    const sWorse = small.filter(r => !POSITIVE.has(r.finding)).map(smName);
+    const sBetter = small.filter(r => POSITIVE.has(r.finding)).map(smName);
     const rec = (recByTerr[T.t] || []).map(r => `${r.region} <span class="rank-tag">r${r.rank}</span>`);
     let lines = '';
     if (sWorse.length) lines += `<div class="ins-small"><span class="fcst-miss">Smaller, worsening:</span> ${sWorse.join(', ')}.</div>`;
@@ -2215,21 +2211,19 @@ function renderManager(allRows) {
 }
 
 function renderRep(terr, rows) {
-  const head = ['Severity', 'Finding', 'Region', 'Share', 'Peer gap', 'Trajectory (m3→now)', 'V', 'net', 'ρ', 'shape', 'FCST RollQ'];
-  const body = rows.map(r => { const s = r.strength; return `<tr>
+  const head = ['Severity', 'Finding', 'Region', 'Share', 'MS dev', 'MS traj.', 'MS shape', 'growth dev', 'growth shape'];
+  const body = rows.map(r => { const s = r.strength, g = r.growth_strength; return `<tr>
     <td>${sevBar(r.severity)}</td>
     <td>${fpill(r)}</td>
     <td>${r.region}</td>
     <td class="num">${r.market_share != null ? r.market_share + '%' : '—'}</td>
     <td class="num">${signed(r.now)}</td>
     <td class="spark">${fmtSeries(r.series)}</td>
-    <td class="num">${s.magnitude.toFixed(2)}</td>
-    <td class="num">${signed(s.net)}</td>
-    <td class="num">${signed(s.coherence)}</td>
     <td><span class="pill shape-${s.shape}">${s.shape}</span></td>
-    <td class="num">${fcstCell(r)}</td></tr>`; }).join('') ||
-    `<tr><td colspan="11" class="spark">No findings in ${terr}.</td></tr>`;
-  return `<div class="fnd-section">${terr} — ${rows.length} findings, full detail for the rep’s own patch</div>` +
+    <td class="num">${signed(r.growth_now)}</td>
+    <td><span class="pill shape-${g.shape}">${g.shape}</span></td></tr>`; }).join('') ||
+    `<tr><td colspan="9" class="spark">No findings in ${terr}.</td></tr>`;
+  return `<div class="fnd-section">${terr} — ${rows.length} regions, full detail for the rep’s own patch</div>` +
     `<table class="sig"><thead><tr>${head.map(th).join('')}</tr></thead><tbody>${body}</tbody></table>`;
 }
 
