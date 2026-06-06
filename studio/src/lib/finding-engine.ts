@@ -1,31 +1,18 @@
-import { computeSignal, computeStrength } from './signal-engine'
+import { computeSignal, computeStrength, deserializeSignal } from './signal-engine'
 import { toolDb } from './db'
 import type { FindingDefinition, FindingRow, FindingAxisResult, SignalDefinition } from './types'
 
 function getSignalDef(signalId: string): SignalDefinition {
   const db = toolDb()
-  const row = db.prepare('SELECT * FROM signal_definitions WHERE id = ?').get(signalId) as {
-    id: string; name: string; label: string; metric: string; period_type: string
-    lags: string; delta_lags: string; direction: string; strength_kind: string
-    loud_threshold: number; created_at: string; updated_at: string
-  } | undefined
-
-  if (!row) {
-    throw new Error(`Signal definition not found: ${signalId}`)
-  }
-
-  return {
-    ...row,
-    lags: JSON.parse(row.lags),
-    delta_lags: JSON.parse(row.delta_lags),
-    direction: row.direction as SignalDefinition['direction'],
-    strength_kind: row.strength_kind as SignalDefinition['strength_kind'],
-  }
+  const row = db.prepare('SELECT * FROM signal_definitions WHERE id = ?').get(signalId) as Record<string, unknown> | undefined
+  if (!row) throw new Error(`Signal definition not found: ${signalId}`)
+  return deserializeSignal(row)
 }
 
 export function classifyFindings(
   def: FindingDefinition,
-  brand: string,
+  // segmentValues: e.g. { brand_name: 'Oncleris' } — forwarded to each axis signal
+  segmentValues: Record<string, string | number>,
   asof: string
 ): FindingRow[] {
   // Step 1: For each axis, compute signal rows
@@ -36,10 +23,10 @@ export function classifyFindings(
     const signalDef = getSignalDef(axis.signal_id)
     axisSignalDefs.set(axis.name, signalDef)
 
-    const signalRows = computeSignal(signalDef, brand, asof)
+    const signalRows = computeSignal(signalDef, segmentValues, asof)
     const regionMap = new Map<string, import('./types').SignalRow>()
     for (const row of signalRows) {
-      regionMap.set(row.region, row)
+      regionMap.set(row.entity, row)
     }
     axisSignalMaps.set(axis.name, regionMap)
   }

@@ -1,12 +1,53 @@
 import { metricsDb, toolDb } from './db'
-import type { SignalDefinition, SignalRow, SignalStrength } from './types'
+import type { SignalDefinition, SignalRow, SignalStrength, FilterCondition, SegmentValues } from './types'
 
-function getValidMetricColumns(): Set<string> {
+// ── Column validation ─────────────────────────────────────────────────────────
+// Returns the set of column names for the given table in metrics.db.
+function getTableColumns(table: string): Set<string> {
   const db = metricsDb()
-  const rows = db.pragma('table_info(region_metrics)') as { name: string; type: string }[]
+  const rows = db.pragma(`table_info(${table})`) as { name: string }[]
   return new Set(rows.map(r => r.name))
 }
 
+function assertColumn(col: string, validCols: Set<string>, fieldName: string) {
+  if (!validCols.has(col)) {
+    throw new Error(
+      `Invalid column "${col}" for ${fieldName}. Available: ${Array.from(validCols).join(', ')}`
+    )
+  }
+}
+
+// ── Filter SQL builder ────────────────────────────────────────────────────────
+function buildFilterSQL(
+  filters: FilterCondition[],
+  segmentValues: Record<string, string | number>
+): { clause: string; params: (string | number)[] } {
+  const conditions: string[] = []
+  const params: (string | number)[] = []
+
+  for (const f of filters) {
+    if (f.operator === 'IN') {
+      const vals = Array.isArray(f.value) ? f.value : [String(f.value)]
+      conditions.push(`${f.column} IN (${vals.map(() => '?').join(',')})`)
+      params.push(...vals)
+    } else {
+      conditions.push(`${f.column} ${f.operator} ?`)
+      params.push(f.value as string | number)
+    }
+  }
+
+  for (const [col, val] of Object.entries(segmentValues)) {
+    conditions.push(`${col} = ?`)
+    params.push(val)
+  }
+
+  return {
+    clause: conditions.length ? 'WHERE ' + conditions.join(' AND ') : '',
+    params,
+  }
+}
+
+// ── Strength computation ──────────────────────────────────────────────────────
 export function computeStrength(series: number[], def: SignalDefinition): SignalStrength {
   if (series.length < 2) {
     return { magnitude: 0, net: 0, coherence: 0, shape: 'quiet' }
@@ -28,7 +69,6 @@ export function computeStrength(series: number[], def: SignalDefinition): Signal
   } else if (Math.abs(coherence) <= 0.2 && magnitude >= def.loud_threshold * 0.5) {
     shape = 'unstable'
   } else {
-    // Check if all steps same sign as net
     const allSameSign = net !== 0 && series.slice(1).every((v, i) => {
       const step = v - series[i]
       return net > 0 ? step >= 0 : step <= 0
@@ -44,96 +84,136 @@ export function computeStrength(series: number[], def: SignalDefinition): Signal
   }
 }
 
+// ── Core generic signal computation ──────────────────────────────────────────
+// segmentValues: e.g. { brand_name: 'Oncleris' } — one value per segment_by column.
+// asof: optional — defaults to MAX(time_dimension) matching the filters+segment.
 export function computeSignal(
   def: SignalDefinition,
-  brand: string,
-  asof: string
+  segmentValues: Record<string, string | number> = {},
+  asof?: string
 ): SignalRow[] {
-  const validCols = getValidMetricColumns()
-  if (!validCols.has(def.metric)) {
-    throw new Error(`Invalid metric column: "${def.metric}". Valid columns: ${Array.from(validCols).join(', ')}`)
+  const db = metricsDb()
+  const cols = getTableColumns(def.source_table)
+
+  // Validate all referenced columns exist in the source table
+  assertColumn(def.entity_dimension, cols, 'entity_dimension')
+  assertColumn(def.time_dimension, cols, 'time_dimension')
+  assertColumn(def.metric, cols, 'metric')
+  for (const f of def.filters) assertColumn(f.column, cols, `filter column "${f.column}"`)
+  for (const s of def.segment_by) assertColumn(s, cols, `segment_by column "${s}"`)
+  for (const s of Object.keys(segmentValues)) assertColumn(s, cols, `segment value column "${s}"`)
+
+  const { clause: filterClause, params: filterParams } = buildFilterSQL(def.filters, segmentValues)
+
+  // Resolve asof if not provided
+  if (!asof) {
+    const row = db.prepare(
+      `SELECT MAX(${def.time_dimension}) AS t FROM ${def.source_table} ${filterClause}`
+    ).get(...filterParams) as { t: string } | undefined
+    asof = row?.t
+    if (!asof) return []
   }
 
-  const db = metricsDb()
-  const sortedLags = [...def.lags].sort((a, b) => a - b)
-  const maxLag = sortedLags[sortedLags.length - 1]
-
-  // Build LAG columns — always build lags 0..maxLag for consecutive series
-  // (we only emit delta_lags in deltas, but need all lags for the series)
+  // Build LAG columns 0..maxLag (consecutive — needed for a gapless series)
+  const maxLag = Math.max(...def.lags.filter(l => l > 0), 0)
   const lagSelects: string[] = []
   for (let i = 0; i <= maxLag; i++) {
-    if (i === 0) {
-      lagSelects.push(`${def.metric} AS v0`)
-    } else {
-      lagSelects.push(`LAG(${def.metric}, ${i}) OVER w AS v${i}`)
-    }
+    lagSelects.push(
+      i === 0
+        ? `${def.metric} AS v0`
+        : `LAG(${def.metric}, ${i}) OVER w AS v${i}`
+    )
   }
 
   const sql = `
     WITH s AS (
       SELECT
-        year_month,
-        region_name,
-        territory_name,
-        rank_sales_eur AS mat_rank,
+        ${def.entity_dimension} AS _entity,
+        ${def.time_dimension}   AS _time,
         ${lagSelects.join(',\n        ')}
-      FROM region_metrics
-      WHERE brand_name = ? AND period_type = ?
-      WINDOW w AS (PARTITION BY region_name ORDER BY year_month)
+      FROM ${def.source_table}
+      ${filterClause}
+      WINDOW w AS (PARTITION BY ${def.entity_dimension} ORDER BY ${def.time_dimension})
     )
     SELECT * FROM s
-    WHERE year_month = ? AND v${maxLag} IS NOT NULL
-    ORDER BY mat_rank DESC
+    WHERE _time = ? ${maxLag > 0 ? `AND v${maxLag} IS NOT NULL` : ''}
   `
 
-  const rawRows = db.prepare(sql).all(brand, def.period_type, asof) as Record<string, unknown>[]
+  const rawRows = db.prepare(sql).all(...filterParams, asof) as Record<string, unknown>[]
 
-  const result: SignalRow[] = rawRows.map(row => {
-    // Build series: oldest (v_maxLag) → now (v0)
+  return rawRows.map(row => {
+    // Series: oldest (v_maxLag) → now (v0)
     const series: number[] = []
     for (let i = maxLag; i >= 0; i--) {
       series.push(row[`v${i}`] as number)
     }
-
     const now = row['v0'] as number
 
-    // Build deltas only for the requested delta_lags
     const deltas: Record<string, number> = {}
     for (const lag of def.delta_lags) {
       if (lag > 0 && lag <= maxLag) {
-        const lagVal = row[`v${lag}`] as number
-        if (lagVal !== null && lagVal !== undefined) {
+        const lagVal = row[`v${lag}`] as number | null
+        if (lagVal != null) {
           deltas[`delta_${lag}m`] = Math.round((now - lagVal) * 1000) / 1000
         }
       }
     }
 
-    const strength = computeStrength(series, def)
+    const entityVal = row['_entity'] as string
 
     return {
-      region: row['region_name'] as string,
-      territory: row['territory_name'] as string,
+      entity: entityVal,
+      entity_label: entityVal,
+      // legacy aliases — kept so FindingComposer / InsightFramer still work
+      region: entityVal,
+      territory: '',
+      mat_rank: 0,
       series,
       now,
       deltas,
-      strength,
-      mat_rank: row['mat_rank'] as number,
-    }
+      strength: computeStrength(series, def),
+    } satisfies SignalRow
   })
-
-  return result.sort((a, b) => b.mat_rank - a.mat_rank)
 }
 
+// ── Distinct segment values (for the preview UI checkboxes) ──────────────────
+export function getSegmentValues(def: SignalDefinition): SegmentValues[] {
+  if (!def.segment_by.length) return []
+  const db = metricsDb()
+  const { clause, params } = buildFilterSQL(def.filters, {})
+  return def.segment_by.map(col => {
+    const rows = db.prepare(
+      `SELECT DISTINCT ${col} AS v FROM ${def.source_table} ${clause} ORDER BY ${col}`
+    ).all(...params) as { v: string }[]
+    return { column: col, values: rows.map(r => r.v) }
+  })
+}
+
+// ── Load a saved signal definition from toolDb ───────────────────────────────
 export function getSignalById(id: string): SignalDefinition | null {
   const db = toolDb()
-  const row = db.prepare('SELECT * FROM signal_definitions WHERE id = ?').get(id)
+  const row = db.prepare('SELECT * FROM signal_definitions WHERE id = ?').get(id) as Record<string, unknown> | undefined
   if (!row) return null
-  const r = row as { id: string; name: string; label: string; metric: string; period_type: string; lags: string; delta_lags: string; direction: string; strength_kind: string; loud_threshold: number; created_at: string; updated_at: string }
+  return deserializeSignal(row)
+}
+
+export function deserializeSignal(r: Record<string, unknown>): SignalDefinition {
   return {
-    ...r,
-    lags: JSON.parse(r.lags),
-    delta_lags: JSON.parse(r.delta_lags),
+    id: r.id as string,
+    name: r.name as string,
+    label: r.label as string,
+    source_table: (r.source_table as string | undefined) ?? 'region_metrics',
+    entity_dimension: (r.entity_dimension as string | undefined) ?? 'region_name',
+    time_dimension: (r.time_dimension as string | undefined) ?? 'year_month',
+    filters: JSON.parse((r.filters as string | undefined) ?? '[]') as FilterCondition[],
+    segment_by: JSON.parse((r.segment_by as string | undefined) ?? '[]') as string[],
+    metric: r.metric as string,
+    lags: JSON.parse(r.lags as string) as number[],
+    delta_lags: JSON.parse(r.delta_lags as string) as number[],
     direction: r.direction as SignalDefinition['direction'],
     strength_kind: r.strength_kind as SignalDefinition['strength_kind'],
+    loud_threshold: r.loud_threshold as number,
+    created_at: r.created_at as string,
+    updated_at: r.updated_at as string,
   }
 }

@@ -1,14 +1,31 @@
+// A condition applied to narrow the source table before computing a signal.
+// Multiple conditions are AND-ed together.
+export interface FilterCondition {
+  column: string
+  operator: '=' | '!=' | '>' | '<' | '>=' | '<=' | 'IN'
+  value: string | number | string[]   // string[] only for IN operator
+}
+
 export interface SignalDefinition {
   id: string
   name: string
   label: string
-  metric: string              // exact column name in region_metrics
-  period_type: string         // MAT | RollQ | YTD | Month
+
+  // Generic source — no schema assumptions
+  source_table: string        // which table in metrics.db (e.g. "region_metrics")
+  entity_dimension: string    // PARTITION BY this column (e.g. "region_name")
+  time_dimension: string      // ORDER BY this column (e.g. "year_month")
+  filters: FilterCondition[]  // fixed WHERE conditions applied to every run
+  segment_by: string[]        // run once per distinct value of these columns (e.g. ["brand_name"])
+
+  // Signal parameters
+  metric: string              // the numeric column to track over time
   lags: number[]              // e.g. [0,1,2,3] or [0,1,3,6,12]
-  delta_lags: number[]        // subset of lags to emit as deltas, e.g. [1,3]
+  delta_lags: number[]        // subset of lags to emit as step-deltas
   direction: 'higher_is_better' | 'lower_is_better'
   strength_kind: 'position' | 'growth'
-  loud_threshold: number      // magnitude threshold for "loud" in severity
+  loud_threshold: number      // V threshold for the "loud" severity bonus
+
   created_at: string
   updated_at: string
 }
@@ -66,12 +83,15 @@ export interface SignalStrength {
 }
 
 export interface SignalRow {
-  region: string
-  territory: string
+  entity: string              // value of entity_dimension column
+  entity_label: string        // same as entity (display alias)
   series: number[]            // oldest → now
   now: number
   deltas: Record<string, number>  // e.g. { delta_1m: -0.36, delta_3m: -1.89 }
   strength: SignalStrength
+  // legacy aliases kept for backward compatibility with FindingComposer/InsightFramer
+  region: string
+  territory: string
   mat_rank: number
 }
 
@@ -101,4 +121,10 @@ export interface MetaInfo {
   period_types: string[]
   metrics: string[]           // available numeric columns in region_metrics
   latest_month: string
+}
+
+// Distinct values for a segment_by column (used in preview UI)
+export interface SegmentValues {
+  column: string
+  values: string[]
 }

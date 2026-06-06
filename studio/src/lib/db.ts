@@ -36,8 +36,12 @@ function initToolDb(db: Database.Database): void {
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       label TEXT NOT NULL,
+      source_table TEXT NOT NULL DEFAULT 'region_metrics',
+      entity_dimension TEXT NOT NULL DEFAULT 'region_name',
+      time_dimension TEXT NOT NULL DEFAULT 'year_month',
+      filters TEXT NOT NULL DEFAULT '[]',
+      segment_by TEXT NOT NULL DEFAULT '[]',
       metric TEXT NOT NULL,
-      period_type TEXT NOT NULL,
       lags TEXT NOT NULL,
       delta_lags TEXT NOT NULL,
       direction TEXT NOT NULL,
@@ -90,6 +94,45 @@ function initToolDb(db: Database.Database): void {
     );
   `)
 
+  // Migrate: add new generic columns to signal_definitions if they don't exist yet
+  // (SQLite ALTER TABLE ADD COLUMN is idempotent on the column-exists check via try/catch)
+  const existingCols = new Set(
+    (db.pragma('table_info(signal_definitions)') as { name: string }[]).map(r => r.name)
+  )
+  const newCols: [string, string][] = [
+    ['source_table',     "TEXT NOT NULL DEFAULT 'region_metrics'"],
+    ['entity_dimension', "TEXT NOT NULL DEFAULT 'region_name'"],
+    ['time_dimension',   "TEXT NOT NULL DEFAULT 'year_month'"],
+    ['filters',          "TEXT NOT NULL DEFAULT '[]'"],
+    ['segment_by',       "TEXT NOT NULL DEFAULT '[]'"],
+  ]
+  for (const [col, def] of newCols) {
+    if (!existingCols.has(col)) {
+      db.exec(`ALTER TABLE signal_definitions ADD COLUMN ${col} ${def}`)
+    }
+  }
+
+  // Migrate existing rows: move period_type column value into filters[],
+  // add brand_name to segment_by. Uses the still-present legacy period_type column.
+  const legacyRows = db.prepare(
+    `SELECT id, period_type, filters, segment_by FROM signal_definitions
+     WHERE source_table = 'region_metrics'`
+  ).all() as { id: string; period_type: string | null; filters: string; segment_by: string }[]
+
+  for (const row of legacyRows) {
+    const filters = JSON.parse(row.filters ?? '[]') as unknown[]
+    const segBy = JSON.parse(row.segment_by ?? '[]') as string[]
+    // Add period_type filter if period_type existed and no period_type filter yet
+    const hasPTFilter = filters.some((f: unknown) => (f as {column:string}).column === 'period_type')
+    const newFilters = [...filters]
+    if (!hasPTFilter && row.period_type) {
+      newFilters.push({ column: 'period_type', operator: '=', value: row.period_type })
+    }
+    const newSegBy = segBy.includes('brand_name') ? segBy : ['brand_name', ...segBy]
+    db.prepare('UPDATE signal_definitions SET filters=?, segment_by=? WHERE id=?')
+      .run(JSON.stringify(newFilters), JSON.stringify(newSegBy), row.id)
+  }
+
   // Seed default data if empty
   const signalCount = (db.prepare('SELECT COUNT(*) as c FROM signal_definitions').get() as { c: number }).c
   if (signalCount === 0) {
@@ -100,16 +143,22 @@ function initToolDb(db: Database.Database): void {
 function seedDefaults(db: Database.Database): void {
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
 
-  // Signal 1: market share deviation
-  db.prepare(`
-    INSERT INTO signal_definitions (id, name, label, metric, period_type, lags, delta_lags, direction, strength_kind, loud_threshold, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  const sigCols = `id, name, label, source_table, entity_dimension, time_dimension,
+    filters, segment_by, metric, lags, delta_lags, direction, strength_kind, loud_threshold,
+    created_at, updated_at`
+  const sigPlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
+
+  // Signal 1: market share deviation — generic, no period_type hardcoded (use a filter)
+  db.prepare(`INSERT INTO signal_definitions (${sigCols}) VALUES (${sigPlaceholders})`).run(
     'sig_mshare_dev_mat',
     'mshare_dev_mat_step_1m_3m',
     'Market Share Deviation (MAT, −1m/−3m)',
+    'region_metrics',
+    'region_name',
+    'year_month',
+    JSON.stringify([{ column: 'period_type', operator: '=', value: 'MAT' }]),
+    JSON.stringify(['brand_name']),
     'mshare_deviation',
-    'MAT',
     JSON.stringify([0, 1, 2, 3]),
     JSON.stringify([1, 3]),
     'higher_is_better',
@@ -119,15 +168,16 @@ function seedDefaults(db: Database.Database): void {
   )
 
   // Signal 2: growth deviation
-  db.prepare(`
-    INSERT INTO signal_definitions (id, name, label, metric, period_type, lags, delta_lags, direction, strength_kind, loud_threshold, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
+  db.prepare(`INSERT INTO signal_definitions (${sigCols}) VALUES (${sigPlaceholders})`).run(
     'sig_growth_dev_mat',
     'growth_deviation_mat_step_1m_3m',
     'Growth Deviation (MAT, −1m/−3m)',
+    'region_metrics',
+    'region_name',
+    'year_month',
+    JSON.stringify([{ column: 'period_type', operator: '=', value: 'MAT' }]),
+    JSON.stringify(['brand_name']),
     'growth_deviation',
-    'MAT',
     JSON.stringify([0, 1, 2, 3]),
     JSON.stringify([1, 3]),
     'higher_is_better',
@@ -208,29 +258,10 @@ function seedDefaults(db: Database.Database): void {
 
 // ─── Row serialization helpers ─────────────────────────────────────────────
 
-type RawSignalRow = {
-  id: string
-  name: string
-  label: string
-  metric: string
-  period_type: string
-  lags: string
-  delta_lags: string
-  direction: string
-  strength_kind: string
-  loud_threshold: number
-  created_at: string
-  updated_at: string
-}
-
-export function parseSignalRow(row: RawSignalRow): SignalDefinition {
-  return {
-    ...row,
-    lags: JSON.parse(row.lags),
-    delta_lags: JSON.parse(row.delta_lags),
-    direction: row.direction as SignalDefinition['direction'],
-    strength_kind: row.strength_kind as SignalDefinition['strength_kind'],
-  }
+// parseSignalRow kept for any legacy callers; prefer deserializeSignal from signal-engine
+export function parseSignalRow(row: Record<string, unknown>): SignalDefinition {
+  const { deserializeSignal } = require('./signal-engine') as typeof import('./signal-engine')
+  return deserializeSignal(row)
 }
 
 type RawFindingRow = {

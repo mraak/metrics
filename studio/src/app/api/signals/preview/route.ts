@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { metricsDb } from '@/lib/db'
-import { computeSignal } from '@/lib/signal-engine'
+import { computeSignal, getSegmentValues } from '@/lib/signal-engine'
 import type { SignalDefinition } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
 function validate(def: Partial<SignalDefinition>): string[] {
   const missing: string[] = []
+  if (!def.source_table) missing.push('source_table')
+  if (!def.entity_dimension) missing.push('entity_dimension')
+  if (!def.time_dimension) missing.push('time_dimension')
   if (!def.metric) missing.push('metric')
-  if (!def.period_type) missing.push('period_type')
   if (!def.lags || def.lags.length < 2) missing.push('lags (at least 2 required)')
   if (!def.delta_lags) missing.push('delta_lags')
   if (!def.direction) missing.push('direction')
@@ -18,22 +19,27 @@ function validate(def: Partial<SignalDefinition>): string[] {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
-    const body = await req.json() as { definition: Partial<SignalDefinition>; brand: string; asof?: string }
+    const body = await req.json() as {
+      definition: Partial<SignalDefinition>
+      segmentValues?: Record<string, string | number>  // one value per segment_by column
+      asof?: string
+    }
 
     const missing = validate(body.definition)
     if (missing.length > 0) {
       return NextResponse.json({ error: `Missing required fields: ${missing.join(', ')}` }, { status: 400 })
     }
 
-    const db = metricsDb()
-    const asof = body.asof ?? (db.prepare('SELECT MAX(year_month) AS latest FROM region_metrics').get() as { latest: string }).latest
-
-    const def = {
+    const def: SignalDefinition = {
       id: 'preview',
       name: body.definition.name ?? 'preview',
       label: body.definition.label ?? 'Preview',
+      source_table: body.definition.source_table!,
+      entity_dimension: body.definition.entity_dimension!,
+      time_dimension: body.definition.time_dimension!,
+      filters: body.definition.filters ?? [],
+      segment_by: body.definition.segment_by ?? [],
       metric: body.definition.metric!,
-      period_type: body.definition.period_type!,
       lags: body.definition.lags!,
       delta_lags: body.definition.delta_lags!,
       direction: body.definition.direction!,
@@ -41,12 +47,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       loud_threshold: body.definition.loud_threshold ?? 2.0,
       created_at: '',
       updated_at: '',
-    } satisfies SignalDefinition
+    }
 
-    const rows = computeSignal(def, body.brand, asof)
+    const segmentValues = body.segmentValues ?? {}
+    const rows = computeSignal(def, segmentValues, body.asof)
+    const segments = getSegmentValues(def)  // available values per segment_by column
 
     return NextResponse.json({
-      data: { rows, asof, brand: body.brand, count: rows.length },
+      data: { rows, asof: body.asof, segments, count: rows.length },
     })
   } catch (err) {
     console.error('[POST /api/signals/preview]', err)

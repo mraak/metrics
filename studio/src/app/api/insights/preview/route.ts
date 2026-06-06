@@ -27,7 +27,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
     const def = parseFindingRow(defRow as Parameters<typeof parseFindingRow>[0])
 
-    const allRows = classifyFindings(def, body.brand, asof)
+    const segmentValues: Record<string, string | number> = body.brand ? { brand_name: body.brand } : {}
+    const allRows = classifyFindings(def, segmentValues, asof)
 
     // Filter to rows matching the framing's finding_key
     const matchingRows = allRows.filter(r => r.finding_key === body.framing.finding_key)
