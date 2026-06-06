@@ -12,6 +12,7 @@ const navLinks = [
   { href: '/signals', label: 'Signals' },
   { href: '/findings', label: 'Findings' },
   { href: '/insights', label: 'Insights' },
+  { href: '/docs/signals.html', label: 'Docs' },
 ]
 
 export default function RootLayout({
