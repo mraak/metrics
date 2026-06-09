@@ -892,6 +892,80 @@ Finding (context-free fact, immutable)
 
 ---
 
+## Design: The Share × Growth × Competitor Decomposition
+
+> Status: agreed design direction, not yet implemented. The complete map of what own/market/competitor signals mean in combination, and the two conservation tests that turn an ambiguous decline into a named cause.
+
+**The trap this avoids.** "We're losing share, so add a signal per competitor" leads to a combinatorial signal set (metric × competitor × period) and *still* doesn't answer the real question. The fix is two-fold: (1) most of what's needed is **aggregate market signals**, not per-competitor; (2) per-competitor detail is **one segmented signal definition** whose instances feed findings — never N entries an analyst picks from. The signal *surface* (what's offered for manual composition) stays small; the signal *space* (what's computed and auto-detected) can grow to hundreds, browsed as a searchable table.
+
+### The blind spot in share alone
+
+`market_share = own / (own + competitors)` is a **ratio**. If the whole market shrinks uniformly — own −20%, competitors −20% — share is *unchanged*, and `mshare_deviation` reports nothing while the region is failing. Share is structurally blind to whole-market contraction. Detecting it needs a level signal on the market itself.
+
+### The signals — only two are free
+
+Within a region × franchise × period, everything sits on the identity **M = O + C** (market = own + competitors). Two measures are primitive; the rest are identities and need naming, not new computation.
+
+| Signal | Definition (YoY, per region × franchise × period) | Kind | Status |
+|--------|---------------------------------------------------|------|--------|
+| `own_growth` | ΔO / O₋₁ | **primitive** | have (`growth_py_sales`) |
+| `market_growth` | ΔM / M₋₁, where M = own + all competitors | **primitive** | **new** |
+| `market_share` | O / M | derived | have |
+| `share_momentum` | `own_growth − market_growth` (sign = share direction) | derived (cheap) | **new** |
+| `competitor_growth_agg` | ΔC / C₋₁ = (ΔM − ΔO)/C₋₁ | derived (cheap) | **new** |
+| `competitor_share` / `competitor_growth` (per competitor) | O_k / M, ΔO_k/O_k₋₁ | **segmented** (one def → N instances via `segment_by`) | **new** |
+| `mshare_deviation` | region share − national share | localizer | have |
+| `growth_deviation` | region own_growth − national own_growth | localizer | have |
+| `market_growth_deviation` | region market_growth − national market_growth | localizer | **new** — *is the contraction local or systemic?* |
+
+`share_momentum` is the key derived identity: **share rises iff own grows faster (in %) than the market.** `market_growth_deviation` localizes a contraction — region market down but nation flat ⇒ region-specific (outflow plausible); nation down too ⇒ systemic (delisting, seasonality).
+
+### The combination matrix
+
+Two axes capture every case: **the pie** (`market_growth`) and **your slice vs the pie** (`share_momentum` = own − market). Competitor behaviour and share direction both fall out as derived annotations.
+
+|  | **Pie expanding** (market ↑) | **Pie stable** (market ≈ 0) | **Pie contracting** (market ↓) |
+|---|---|---|---|
+| **Gaining share** (own > market) | ⭐ Outgrowing a hot market — comp ↑ but slower. *Replicate.* | Taking share in a flat market — comp ↓; direct capture. *Name whom.* | Grabbing share in a shrinking market — comp ↓↓; counter-cyclical. *Strong, but ceiling falling — why is the pie shrinking?* |
+| **Holding share** (own ≈ market) | Riding the tide — growing only with the market; comp ↑ too. *Benign, no edge.* | Dormant — stable, low priority. | **Sinking with the market** — comp ↓ proportionally; share flat *masks* the decline. *NOT competitive → cross-region outflow / demand-loss check.* |
+| **Losing share** (own < market) | Underperforming a hot market — comp ↑↑; acute competitive loss. *Identify the outgrower.* | **Losing share, pie intact** — comp **↑ ⇒ takeover** / comp **flat ⇒ outflow**. *Competitor direction decides.* | Double hit — comp ↓ but own ↓ faster; contraction *and* losing share within it. *Worst case.* |
+
+Three cells carry the action; the rest are healthy (top band) or benign-stable (centre) and stay quiet under existing relevance scoring:
+- **Losing share, pie intact** — host of the within-region conservation test.
+- **Sinking with the market** — invisible to share; only `market_growth` exposes it.
+- **Double hit** — escalate; both stories at once.
+
+### Two nested conservation tests
+
+A decline is only diagnostic once you know *where the volume went*. Two tests, applied in order:
+
+**1. Within-region (which brand got my volume?)** — when `own ↓`, read aggregate/segmented competitor movement:
+
+| Own ↓, and competitors… | Conservation says | Diagnosis | Next step |
+|---|---|---|---|
+| competitors **↑** (absorb ≈ the loss) | stayed in-market, switched brand | **Competitive takeover** | segment → name the gaining competitor, why |
+| competitors **flat** | left the market, not captured locally | **Outflow or demand loss** | → cross-region test |
+| competitors **↓** (everyone down) | whole area shrank here | **Market contraction** | → cross-region test + `market_growth_deviation` |
+
+A *stable* competitor is therefore **evidence**, not a non-event: it rules out local takeover and points outward.
+
+**2. Cross-region (which region got our volume?)** — when volume left the local market, scan all regions in the *same franchise / period* for a compensating rise: own region down ~K units, another up ~K. This splits contraction in two:
+
+| Region market ↓ | Compensating rise elsewhere (∑ ≈ K, same franchise)? | Diagnosis |
+|---|---|---|
+| yes | **yes** | **Displaced volume** — relocated; *check for a lost account* |
+| yes | **no** | **True demand loss** — seasonality, delisting, real shrink |
+
+### Findings, attribution, and the deferred outflow finding
+
+Each matrix cell is a **finding archetype**; the conservation tests are **attribution steps** that rank segmented instances and bind the salient one to a sentence variable (`{{top_competitor}}`, `{{destination_region}}`). This single mechanism — *rank instances, bind the winner* — powers every "who/which" narrative, not just competitors, and is the prerequisite for sentence-based reporting.
+
+The **cross-region outflow** finding is the first **relational/pairwise** finding (every current finding classifies one region independently); it reasons over region *pairs* and needs the attribution mechanism plus, ideally, region-adjacency or account-level data. It is therefore deferred to a focused second pass, and is **opt-in per franchise** (flag franchises with mobile demand; for fixed-demand datasets, `true demand loss` is the only contraction verdict). The system surfaces it as an **evidence-backed hypothesis** ("market contracted locally, volume reappears in Region Y — probable outflow, check for a lost account"), never as confirmed fact until account-level data closes it.
+
+**Build order:** (1) `market_growth` + `market_growth_deviation` signals; (2) the own-growth × market-growth quadrant finding; (3) the segmented-attribution mechanism (`competitor_share` via `segment_by`) so the competitor name flows into insight prose; (4) the relational cross-region outflow finding, last.
+
+---
+
 ## Key Principles
 
 ### 1. Each Tier Adds Exactly One Thing

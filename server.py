@@ -283,6 +283,20 @@ class Handler(SimpleHTTPRequestHandler):
                     import territory  # lazy: imports server
                     brand = params.get("brand", ["Oncleris"])[0]
                     return self._send_json(territory.territory_metrics(brand))
+                if parsed.path == "/api/signal_analysis":
+                    import signal_analysis  # lazy: imports server
+                    return self._send_json(signal_analysis.analyze_all(
+                        params.get("brand", [None])[0], params.get("asof", [None])[0]))
+                if parsed.path == "/api/signal_analysis/composite":
+                    import signal_analysis
+                    sigs = [s for s in params.get("signals", [""])[0].split(",") if s]
+                    return self._send_json(signal_analysis.composite(
+                        sigs, params.get("brand", [None])[0], params.get("asof", [None])[0]))
+                if parsed.path == "/api/signal_analysis/search":
+                    import signal_analysis
+                    return self._send_json(signal_analysis.search(
+                        params.get("brand", [None])[0], params.get("asof", [None])[0],
+                        max_k=int(params.get("k", ["3"])[0])))
                 return self._send_json({"error": "unknown endpoint"}, 404)
             except Exception as e:  # surface errors as JSON for the app
                 return self._send_json({"error": f"{type(e).__name__}: {e}"}, 500)

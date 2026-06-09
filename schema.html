@@ -1020,6 +1020,7 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
 <div class="tabs">
   <button class="tab active" data-tab="schema" onclick="switchTab('schema')">🗂 Schema</button>
   <button class="tab" data-tab="signals" onclick="switchTab('signals')">📈 Signals</button>
+  <button class="tab" data-tab="sigan" onclick="switchTab('sigan')">📊 Signal Analysis</button>
   <button class="tab" data-tab="findings" onclick="switchTab('findings')">🔎 Findings</button>
   <button class="tab" data-tab="insights" onclick="switchTab('insights')">💡 Insights</button>
 </div>
@@ -1232,6 +1233,33 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
         <div id="sig-scatter"></div>
         <div id="sig-trails"></div>
         <div id="sig-3d"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Signal Analysis tab (cross-metric loudness + composites) -->
+  <div class="tab-panel" id="tab-sigan">
+    <div class="signals-wrap">
+      <div class="signals-toolbar">
+        <span><label>Brand</label><select id="sa-brand" onchange="loadSigan()"></select></span>
+        <span class="seg-group">
+          <button class="seg active" id="sa-mode-loud" onclick="setSaMode('loud')">🔝 Loudest</button>
+          <button class="seg" id="sa-mode-compose" onclick="setSaMode('compose')">🧬 Compose</button>
+          <button class="seg" id="sa-mode-search" onclick="setSaMode('search')">🔍 Auto-search</button>
+        </span>
+        <span id="sa-topx-wrap"><label>Show</label><select id="sa-topx" onchange="renderSaLoud()">
+          <option value="0.01">Top 1%</option>
+          <option value="0.05" selected>Top 5%</option>
+          <option value="0.10">Top 10%</option>
+          <option value="0.25">Top 25%</option>
+          <option value="all">All</option>
+        </select></span>
+        <span class="signals-meta" id="sa-meta"></span>
+      </div>
+      <div class="signals-body">
+        <div class="signals-interp" id="sa-legend"></div>
+        <div id="sa-compose-bar" hidden></div>
+        <div id="sa-results">Loading…</div>
       </div>
     </div>
   </div>
@@ -1537,6 +1565,7 @@ function switchTab(name) {
   document.querySelectorAll('.tab-panel').forEach(p =>
     p.classList.toggle('active', p.id === 'tab-' + name));
   if (name === 'signals' && !signalsInited) initSignals();
+  if (name === 'sigan' && !siganInited) initSigan();
   if (name === 'findings' && !findingsInited) initFindings();
   if (name === 'insights' && !insightsInited) initInsights();
 }
@@ -1962,6 +1991,173 @@ function sortBy(i) {
     quadView = { x: 0, y: 0, w: QW, h: QH }; applyQuadView();
   });
 })();
+
+/* ── Signal Analysis tab (cross-metric loudness + composites) ── */
+let siganInited = false, saMode = 'loud', saData = null;
+const SA_INTERP = {};   // signal id -> curated interpretation (for tooltips)
+const SA_TAG = {
+  eruption: { c: '#cc3322', l: '🌋 Eruption' },
+  chronic:  { c: '#9a7700', l: '🔁 Chronic' },
+  stirring: { c: '#2266aa', l: '🌱 Stirring' },
+  quiet:    { c: '#9aa0a6', l: '· quiet' },
+};
+function saTagBadge(tag) {
+  const t = SA_TAG[tag] || SA_TAG.quiet;
+  return `<span style="display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;color:#fff;background:${t.c}">${t.l}</span>`;
+}
+function saPct(v) { return v == null ? '—' : Math.round(v * 100) + '%'; }
+function saZ(v)   { return v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(1); }
+function saSig(id) { return id.replace(/_/g, '·'); }
+
+async function initSigan() {
+  siganInited = true;
+  if (!document.getElementById('sa-style')) {
+    const st = document.createElement('style'); st.id = 'sa-style';
+    st.textContent = `
+      .sa-table{border-collapse:collapse;width:100%;font-size:12px}
+      .sa-table th,.sa-table td{padding:5px 9px;border-bottom:1px solid #eee;text-align:left;white-space:nowrap}
+      body.dark-theme .sa-table th,body.dark-theme .sa-table td{border-bottom-color:#222}
+      .sa-table th{font-size:11px;color:#888;font-weight:600;cursor:default}
+      .sa-table td.num{text-align:right;font-variant-numeric:tabular-nums}
+      .sa-mono{font-family:'Menlo',monospace}
+      .sa-contrib{color:#777;font-size:11px}
+      .sa-chk{display:inline-flex;align-items:center;gap:5px;margin:3px 12px 3px 0;font-size:12px}
+      .sa-bar{display:flex;flex-wrap:wrap;gap:2px;align-items:center;padding:8px 0}`;
+    document.head.appendChild(st);
+  }
+  try {
+    if (!META) META = await (await fetch('/api/meta')).json();
+  } catch (e) {
+    document.getElementById('sa-results').innerHTML =
+      '<div class="sig-error">No API server. Run <code>python3 server.py</code> and reload.</div>';
+    return;
+  }
+  (META.signals || []).forEach(s => { SA_INTERP[s.id] = s.interpretation || ''; });
+  const bsel = document.getElementById('sa-brand');
+  bsel.innerHTML = META.brands.map(b => `<option>${b}</option>`).join('');
+  renderComposeBar();
+  loadSigan();
+}
+
+function setSaMode(m) {
+  saMode = m;
+  ['loud', 'compose', 'search'].forEach(x =>
+    document.getElementById('sa-mode-' + x).classList.toggle('active', x === m));
+  document.getElementById('sa-compose-bar').hidden = (m !== 'compose');
+  document.getElementById('sa-topx-wrap').hidden = (m !== 'loud');
+  if (m === 'loud') renderSaLoud();
+  else if (m === 'compose') document.getElementById('sa-results').innerHTML =
+    '<p style="color:#888;font-size:13px">Pick a few signals above, then <b>Compute composite</b>.</p>';
+  else if (m === 'search') runSaSearch();
+}
+
+async function loadSigan() {
+  const brand = document.getElementById('sa-brand').value;
+  const out = document.getElementById('sa-results');
+  out.textContent = 'Loading…';
+  try {
+    saData = await (await fetch('/api/signal_analysis?brand=' + encodeURIComponent(brand))).json();
+  } catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
+  if (saData.error) { out.innerHTML = `<div class="sig-error">${saData.error}</div>`; return; }
+  document.getElementById('sa-legend').innerHTML = Object.entries(saData.tag_legend)
+    .map(([k, v]) => `${saTagBadge(k)} <span style="font-size:11px;color:#888">${v}</span>`).join(' &nbsp; ');
+  if (saMode === 'loud') renderSaLoud(); else setSaMode(saMode);
+}
+
+function renderSaLoud() {
+  if (!saData) return;
+  const sel = document.getElementById('sa-topx').value;
+  const total = saData.total || saData.ranked.length;
+  const rows = sel === 'all' ? saData.ranked
+    : saData.ranked.slice(0, Math.max(1, Math.round(total * parseFloat(sel))));
+  const scope = sel === 'all' ? 'all' : `top ${Math.round(parseFloat(sel) * 100)}%`;
+  document.getElementById('sa-meta').textContent =
+    `${saData.brand} · as-of ${saData.asof} · ${scope} loudest across all metrics · ${rows.length} of ${total} signals`;
+  const body = rows.map(r => `<tr>
+      <td>${saTagBadge(r.tag)}</td>
+      <td class="sa-mono" title="${(SA_INTERP[r.signal] || '').replace(/"/g, '&quot;')}">${saSig(r.signal)}</td>
+      <td>${r.region}</td>
+      <td class="sa-mono" style="color:#888">[${r.series.join(', ')}]</td>
+      <td class="num">${r.loudness.toFixed(2)}</td>
+      <td class="num">${saPct(r.vs_peers)}</td>
+      <td class="num">${saZ(r.vs_self)}</td>
+      <td class="num">${signed(r.consistency, 2)}</td>
+      <td>${r.shape}</td>
+      <td style="white-space:normal;max-width:340px;color:#555">${r.read}</td></tr>`).join('');
+  document.getElementById('sa-results').innerHTML = `<table class="sa-table">
+    <thead><tr>
+      <th title="Eruption=loud now & unusual for itself; Chronic=loud but normal for it; Stirring=rising vs own baseline">tag</th>
+      <th title="Hover a signal name for its curated interpretation">signal</th><th>region</th><th>trajectory (oldest→now)</th>
+      <th class="num" title="Intrinsic loudness V = Σ|step deltas|, raw metric units">loudness</th>
+      <th class="num" title="Cross-sectional: percentile of V among all regions this month (metric-comparable)">vs peers</th>
+      <th class="num" title="Robust z of current V vs this region's own past V (median+MAD). High = calm historically.">vs self</th>
+      <th class="num" title="Consistency ρ = net ÷ loudness; |ρ|→1 clean trend, →0 oscillation">consistency</th>
+      <th>shape</th>
+      <th title="Plain-language read: direction + shape + how loud vs peers/its own history">interpretation</th>
+    </tr></thead><tbody>${body}</tbody></table>`;
+}
+
+function renderComposeBar() {
+  const def = new Set([(META.signal_roles || {}).region_position, (META.signal_roles || {}).region_growth].filter(Boolean));
+  const chks = META.signals.map(s =>
+    `<label class="sa-chk"><input type="checkbox" class="sa-csig" value="${s.id}" ${def.has(s.id) ? 'checked' : ''}> ${saSig(s.id)}</label>`).join('');
+  document.getElementById('sa-compose-bar').innerHTML =
+    `<div class="sa-bar">${chks}</div>
+     <button class="btn small" onclick="runSaCompose()">🧬 Compute composite</button>`;
+}
+
+async function runSaCompose() {
+  const brand = document.getElementById('sa-brand').value;
+  const sigs = [...document.querySelectorAll('.sa-csig:checked')].map(c => c.value);
+  const out = document.getElementById('sa-results');
+  if (sigs.length < 2) { out.innerHTML = '<p style="color:#cc3322;font-size:13px">Pick at least 2 signals.</p>'; return; }
+  out.textContent = 'Computing…';
+  let d;
+  try { d = await (await fetch(`/api/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${sigs.join(',')}`)).json(); }
+  catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
+  if (d.error) { out.innerHTML = `<div class="sig-error">${d.error}</div>`; return; }
+  document.getElementById('sa-meta').textContent =
+    `${d.brand} · as-of ${d.asof} · composite of ${sigs.length} signals · ${d.rows.length} regions · standardized (σ) units`;
+  const arrow = dir => dir === 'improving' ? '<span class="pos">▲</span>'
+    : dir === 'deteriorating' ? '<span class="neg">▼</span>' : '·';
+  const body = d.rows.slice(0, 40).map((r, i) => {
+    const contrib = Object.entries(r.contrib)
+      .map(([k, v]) => `${saSig(k)} ${v.loudness.toFixed(1)}${arrow(v.dir)}`).join(' · ');
+    return `<tr><td class="num">${i + 1}</td><td>${r.region}</td>
+      <td class="num"><b>${r.composite_loudness.toFixed(2)}</b></td>
+      <td class="sa-contrib">${contrib}</td>
+      <td style="white-space:normal;max-width:360px;color:#555">${r.read}</td></tr>`;
+  }).join('');
+  out.innerHTML = `<table class="sa-table"><thead><tr>
+      <th class="num">#</th><th>region</th>
+      <th class="num" title="Total variation of the standardized N-D trajectory">composite loudness</th>
+      <th title="Each signal's own standardized movement + direction (interpret the composite)">contribution by signal</th>
+      <th title="Plain-language read: reinforcing vs divergent, and the dominant driver">interpretation</th>
+    </tr></thead><tbody>${body}</tbody></table>`;
+}
+
+async function runSaSearch() {
+  const brand = document.getElementById('sa-brand').value;
+  const out = document.getElementById('sa-results');
+  out.textContent = 'Searching combinations…';
+  let d;
+  try { d = await (await fetch(`/api/signal_analysis/search?brand=${encodeURIComponent(brand)}&k=3`)).json(); }
+  catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
+  if (d.error) { out.innerHTML = `<div class="sig-error">${d.error}</div>`; return; }
+  document.getElementById('sa-meta').textContent =
+    `${d.brand} · as-of ${d.asof} · loudest signal combinations (size 2–${d.max_k})`;
+  const body = d.combos.slice(0, 25).map((c, i) => `<tr>
+      <td class="num">${i + 1}</td>
+      <td class="sa-mono">${c.signals.map(saSig).join('  +  ')}</td>
+      <td class="num"><b>${c.loudness_p95.toFixed(2)}</b></td>
+      <td class="num">${c.max_loudness.toFixed(2)}</td>
+      <td>${c.top_regions.join(', ')}</td></tr>`).join('');
+  out.innerHTML = `<table class="sa-table"><thead><tr>
+      <th class="num">#</th><th>composite (signals combined)</th>
+      <th class="num" title="How loud its loudest regions get (95th pctl of composite loudness)">loudness p95</th>
+      <th class="num">max</th><th>loudest regions</th>
+    </tr></thead><tbody>${body}</tbody></table>`;
+}
 
 /* ── Findings tab ── */
 let findingsInited = false, insightsInited = false, fndData = null, insData = null, insUser = 'manager';
