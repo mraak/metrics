@@ -26,7 +26,7 @@ python3 compute_metrics.py
 
 ```bash
 python3 knowledge.py                                  # summary + validation
-python3 knowledge.py --signal mshare_dev_mat_step_1m_3m   # compile a signal to SQL
+python3 knowledge.py --signal mshare_deviation_mat   # compile a signal to SQL
 ```
 
 **What it does:**
@@ -781,7 +781,7 @@ It is a concrete, version-controlled artifact in the repo:
 
 ### Three Kinds of Entries
 
-1. **Signal templates** — a named binding of the four signal parameters (`metric`, `period_type`, `lags`, `readout`) plus an interpretation of what the trajectory *means*. Example: `mshare_dev_mat_trend_3m` = "is our relative market-share position widening or closing over the last quarter, on a 12-month base?" Each compiles to a window query on demand.
+1. **Signal templates** — a named binding of the four signal parameters (`metric`, `period_type`, `lags`, `readout`) plus an interpretation of what the trajectory *means*. Example: `mshare_deviation_mat` = "is our relative market-share position widening or closing over the last quarter, on a 12-month base?" Each compiles to a window query on demand.
 2. **Finding recipes** — the rules / compositions / clustering configs / model prompts that combine signals (and other facts) into a Finding archetype. Method-agnostic: an IF/THEN rule and an LLM prompt are both just entries here. Each declares the signal templates it `requires_signals`.
 3. **Insight framings** — per-persona rules for *what to surface, how to phrase it, and when to stay silent* (e.g. CEO sees only problem regions). Encoded as `surface_when` / `suppress_when` predicates.
 
@@ -989,14 +989,14 @@ This traces one real region (BE Burgdorf, Oncleris, MAT 2026-05) from raw signal
 Neither is stored. Both are derived from `region_metrics` at query time using LAG OVER PARTITION BY.
 
 ```
-Signal A: mshare_dev_mat_step_1m_3m   (market-share deviation, MAT, last 4 months)
+Signal A: mshare_deviation_mat   (market-share deviation, MAT, last 4 months)
   series (oldest → now):  [−0.87,  −1.63,  −2.40,  −2.76]  pp vs national average
   V (magnitude)         = 1.89     total path length
   net D                 = −1.89    signed displacement
   ρ (coherence)         = −1.00    perfectly directional — every step the same way
   shape                 = trend
 
-Signal B: growth_deviation_mat_step_1m_3m   (growth deviation vs national YoY, MAT)
+Signal B: growth_deviation_mat   (growth deviation vs national YoY, MAT)
   series (oldest → now):  [+6.33,  +1.47,  −3.49,  −4.82]  pp vs national growth
   V (magnitude)         = 11.15    large total path
   net D                 = −11.15

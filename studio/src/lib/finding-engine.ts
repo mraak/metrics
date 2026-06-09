@@ -1,12 +1,11 @@
-import { computeSignal, computeStrength, deserializeSignal } from './signal-engine'
-import { toolDb } from './db'
+import { computeSignal, computeStrength } from './signal-engine'
+import { readSignalByName } from './knowledge-store'
 import type { FindingDefinition, FindingRow, FindingAxisResult, SignalDefinition } from './types'
 
 function getSignalDef(signalId: string): SignalDefinition {
-  const db = toolDb()
-  const row = db.prepare('SELECT * FROM signal_definitions WHERE id = ?').get(signalId) as Record<string, unknown> | undefined
-  if (!row) throw new Error(`Signal definition not found: ${signalId}`)
-  return deserializeSignal(row)
+  const def = readSignalByName(signalId)
+  if (!def) throw new Error(`Signal definition not found: ${signalId}`)
+  return def
 }
 
 export function classifyFindings(

@@ -526,7 +526,7 @@
 
   <pre><code><span class="lang-tag">JSON</span>{
   <span class="jk">"id"</span>:               <span class="jv">"sig_mshare_dev_mat"</span>,
-  <span class="jk">"name"</span>:             <span class="jv">"mshare_dev_mat_step_1m_3m"</span>,
+  <span class="jk">"name"</span>:             <span class="jv">"mshare_deviation_mat"</span>,
   <span class="jk">"label"</span>:            <span class="jv">"Market Share Deviation (MAT, −1m/−3m)"</span>,
 
   <span class="cm">// ── SOURCE: where to read from ────────────────────────────────</span>
@@ -948,12 +948,12 @@ shape: |ρ| = 1.0 ≥ 0.8  →  <span class="jv">"trend"</span></code></pre>
   <p>Two signals computed for the same entity at the same asof:</p>
 
   <pre><code><span class="lang-tag">Axes</span>Axis A — share position
-  signal:  mshare_dev_mat_step_1m_3m
+  signal:  mshare_deviation_mat
   now:     -2.76pp     <span class="cm">← below peers (bad side)</span>
   ρ:       -1.00       <span class="cm">← deteriorating trend</span>
 
 Axis B — growth momentum
-  signal:  growth_deviation_mat_step_1m_3m
+  signal:  growth_deviation_mat
   now:     -4.82pp     <span class="cm">← under-growing (bad side)</span>
   ρ:       -1.00       <span class="cm">← deteriorating trend</span>
 

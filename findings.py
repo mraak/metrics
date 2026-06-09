@@ -215,8 +215,8 @@ def _history(brand, asof, defs):
 
 def find_findings(brand, asof=None, force=False):
     defs = knowledge.load()
-    p_ms = {"brand": [brand], "signal": ["mshare_dev_mat_step_1m_3m"]}
-    p_gr = {"brand": [brand], "signal": ["growth_deviation_mat_step_1m_3m"]}
+    p_ms = {"brand": [brand], "signal": [knowledge.role(defs, "region_position")]}
+    p_gr = {"brand": [brand], "signal": [knowledge.role(defs, "region_growth")]}
     if asof:
         p_ms["asof"] = [asof]; p_gr["asof"] = [asof]
     ms = server.api_signals(p_ms)

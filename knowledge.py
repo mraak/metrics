@@ -13,7 +13,7 @@ This module proves the store is well-formed and wired to the real schema:
 
 Usage:
     python3 knowledge.py                 # validate + print a summary
-    python3 knowledge.py --signal mshare_dev_mat_trend_3m   # show the SQL a signal compiles to
+    python3 knowledge.py --signal mshare_deviation_mat   # show the SQL a signal compiles to
 """
 
 import argparse
@@ -30,6 +30,19 @@ DB_PATH = HERE / "metrics.db"
 def load(path=DEFS_PATH):
     with open(path) as f:
         return json.load(f)
+
+
+def role(defs, name):
+    """Resolve a signal_roles name (e.g. 'ui_default') to its template id.
+
+    Lets code/UI reference signals by stable role instead of a hard-coded id.
+    Raises KeyError with a clear message if the role is undefined.
+    """
+    roles = defs.get("signal_roles", {})
+    if name not in roles:
+        known = [k for k in roles if not k.startswith("_")]
+        raise KeyError(f"signal role '{name}' not defined in signal_roles (have: {known})")
+    return roles[name]
 
 
 def region_metrics_columns(db_path=DB_PATH):
@@ -69,6 +82,13 @@ def validate(defs, columns):
             for dl in dls:
                 if dl not in s["lags"]:
                     problems.append(f"signal '{name}': delta lag {dl} not present in lags {s['lags']}")
+
+    # Signal roles: every role must resolve to a defined signal template
+    for rname, target in defs.get("signal_roles", {}).items():
+        if rname.startswith("_"):
+            continue
+        if target not in signals:
+            problems.append(f"signal role '{rname}': points at undefined signal '{target}'")
 
     # Finding recipes: every required signal must be defined
     for name, r in recipes.items():

@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3'
 import path from 'path'
-import type { SignalDefinition, FindingDefinition, InsightFraming } from './types'
+import type { FindingDefinition, InsightFraming } from './types'
 
 // ─── Metrics DB (read-only) ────────────────────────────────────────────────
 
@@ -31,26 +31,10 @@ export function toolDb(): Database.Database {
 }
 
 function initToolDb(db: Database.Database): void {
+  // NOTE: signals are NOT stored here — they live in ../knowledge_definitions.json
+  // (the single source of truth, shared with the Python app) and are read/written
+  // via knowledge-store.ts. This DB holds only findings + insights + their catalog.
   db.exec(`
-    CREATE TABLE IF NOT EXISTS signal_definitions (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL UNIQUE,
-      label TEXT NOT NULL,
-      source_table TEXT NOT NULL DEFAULT 'region_metrics',
-      entity_dimension TEXT NOT NULL DEFAULT 'region_name',
-      time_dimension TEXT NOT NULL DEFAULT 'year_month',
-      filters TEXT NOT NULL DEFAULT '[]',
-      segment_by TEXT NOT NULL DEFAULT '[]',
-      metric TEXT NOT NULL,
-      lags TEXT NOT NULL,
-      delta_lags TEXT NOT NULL,
-      direction TEXT NOT NULL,
-      strength_kind TEXT NOT NULL,
-      loud_threshold REAL NOT NULL DEFAULT 2.0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
     CREATE TABLE IF NOT EXISTS finding_definitions (
       id TEXT PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
@@ -94,48 +78,10 @@ function initToolDb(db: Database.Database): void {
     );
   `)
 
-  // Migrate: add new generic columns to signal_definitions if they don't exist yet
-  // (SQLite ALTER TABLE ADD COLUMN is idempotent on the column-exists check via try/catch)
-  const existingCols = new Set(
-    (db.pragma('table_info(signal_definitions)') as { name: string }[]).map(r => r.name)
-  )
-  const newCols: [string, string][] = [
-    ['source_table',     "TEXT NOT NULL DEFAULT 'region_metrics'"],
-    ['entity_dimension', "TEXT NOT NULL DEFAULT 'region_name'"],
-    ['time_dimension',   "TEXT NOT NULL DEFAULT 'year_month'"],
-    ['filters',          "TEXT NOT NULL DEFAULT '[]'"],
-    ['segment_by',       "TEXT NOT NULL DEFAULT '[]'"],
-  ]
-  for (const [col, def] of newCols) {
-    if (!existingCols.has(col)) {
-      db.exec(`ALTER TABLE signal_definitions ADD COLUMN ${col} ${def}`)
-    }
-  }
-
-  // Migrate existing rows: move period_type column value into filters[],
-  // add brand_name to segment_by. Uses the still-present legacy period_type column.
-  const legacyRows = db.prepare(
-    `SELECT id, period_type, filters, segment_by FROM signal_definitions
-     WHERE source_table = 'region_metrics'`
-  ).all() as { id: string; period_type: string | null; filters: string; segment_by: string }[]
-
-  for (const row of legacyRows) {
-    const filters = JSON.parse(row.filters ?? '[]') as unknown[]
-    const segBy = JSON.parse(row.segment_by ?? '[]') as string[]
-    // Add period_type filter if period_type existed and no period_type filter yet
-    const hasPTFilter = filters.some((f: unknown) => (f as {column:string}).column === 'period_type')
-    const newFilters = [...filters]
-    if (!hasPTFilter && row.period_type) {
-      newFilters.push({ column: 'period_type', operator: '=', value: row.period_type })
-    }
-    const newSegBy = segBy.includes('brand_name') ? segBy : ['brand_name', ...segBy]
-    db.prepare('UPDATE signal_definitions SET filters=?, segment_by=? WHERE id=?')
-      .run(JSON.stringify(newFilters), JSON.stringify(newSegBy), row.id)
-  }
-
-  // Seed default data if empty
-  const signalCount = (db.prepare('SELECT COUNT(*) as c FROM signal_definitions').get() as { c: number }).c
-  if (signalCount === 0) {
+  // Seed default finding/insight data if empty. (Signals are NOT stored here —
+  // they live in ../knowledge_definitions.json, read via knowledge-store.ts.)
+  const findingCount = (db.prepare('SELECT COUNT(*) as c FROM finding_definitions').get() as { c: number }).c
+  if (findingCount === 0) {
     seedDefaults(db)
   }
 }
@@ -143,53 +89,14 @@ function initToolDb(db: Database.Database): void {
 function seedDefaults(db: Database.Database): void {
   const now = new Date().toISOString().replace('T', ' ').substring(0, 19)
 
-  const sigCols = `id, name, label, source_table, entity_dimension, time_dimension,
-    filters, segment_by, metric, lags, delta_lags, direction, strength_kind, loud_threshold,
-    created_at, updated_at`
-  const sigPlaceholders = `?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?`
-
-  // Signal 1: market share deviation — generic, no period_type hardcoded (use a filter)
-  db.prepare(`INSERT INTO signal_definitions (${sigCols}) VALUES (${sigPlaceholders})`).run(
-    'sig_mshare_dev_mat',
-    'mshare_dev_mat_step_1m_3m',
-    'Market Share Deviation (MAT, −1m/−3m)',
-    'region_metrics',
-    'region_name',
-    'year_month',
-    JSON.stringify([{ column: 'period_type', operator: '=', value: 'MAT' }]),
-    JSON.stringify(['brand_name']),
-    'mshare_deviation',
-    JSON.stringify([0, 1, 2, 3]),
-    JSON.stringify([1, 3]),
-    'higher_is_better',
-    'position',
-    2.0,
-    now, now
-  )
-
-  // Signal 2: growth deviation
-  db.prepare(`INSERT INTO signal_definitions (${sigCols}) VALUES (${sigPlaceholders})`).run(
-    'sig_growth_dev_mat',
-    'growth_deviation_mat_step_1m_3m',
-    'Growth Deviation (MAT, −1m/−3m)',
-    'region_metrics',
-    'region_name',
-    'year_month',
-    JSON.stringify([{ column: 'period_type', operator: '=', value: 'MAT' }]),
-    JSON.stringify(['brand_name']),
-    'growth_deviation',
-    JSON.stringify([0, 1, 2, 3]),
-    JSON.stringify([1, 3]),
-    'higher_is_better',
-    'growth',
-    10.0,
-    now, now
-  )
+  // NOTE: signals are NOT seeded here — they live in ../knowledge_definitions.json
+  // (the single source of truth, shared with the Python app) and are read via
+  // knowledge-store.ts. Finding axes reference signals by their JSON template key.
 
   // Finding 1: share × growth quadrant
   const axes = [
-    { name: 'share', signal_id: 'sig_mshare_dev_mat', good_direction: 'positive', threshold: 0 },
-    { name: 'growth', signal_id: 'sig_growth_dev_mat', good_direction: 'positive', threshold: 0 },
+    { name: 'share', signal_id: 'mshare_deviation_mat', good_direction: 'positive', threshold: 0 },
+    { name: 'growth', signal_id: 'growth_deviation_mat', good_direction: 'positive', threshold: 0 },
   ]
   const classifications = [
     { key: 'losing_both', label: 'Losing on both', conditions: [{ axis: 'share', side: 'bad' }, { axis: 'growth', side: 'bad' }] },
@@ -257,12 +164,6 @@ function seedDefaults(db: Database.Database): void {
 }
 
 // ─── Row serialization helpers ─────────────────────────────────────────────
-
-// parseSignalRow kept for any legacy callers; prefer deserializeSignal from signal-engine
-export function parseSignalRow(row: Record<string, unknown>): SignalDefinition {
-  const { deserializeSignal } = require('./signal-engine') as typeof import('./signal-engine')
-  return deserializeSignal(row)
-}
 
 type RawFindingRow = {
   id: string

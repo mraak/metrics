@@ -26,7 +26,8 @@ import knowledge
 
 HERE = Path(__file__).resolve().parent
 DB_PATH = HERE / "metrics.db"
-DEFAULT_SIGNAL = "mshare_dev_mat_step_1m_3m"
+# Resolved from config (knowledge_definitions.json -> signal_roles), not hard-coded.
+DEFAULT_SIGNAL = knowledge.role(knowledge.load(), "ui_default")
 
 
 def _conn():
@@ -64,8 +65,10 @@ def api_meta():
          "interpretation": v.get("interpretation", "")}
         for k, v in defs["signal_templates"].items() if not k.startswith("_")
     ]
+    roles = {k: v for k, v in defs.get("signal_roles", {}).items()
+             if not k.startswith("_")}
     return {"brands": brands, "periods": periods, "franchises": franchises,
-            "signals": signals, "latest_ym": latest}
+            "signals": signals, "signal_roles": roles, "latest_ym": latest}
 
 
 def api_signals(params):

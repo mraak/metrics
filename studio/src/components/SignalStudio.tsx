@@ -199,7 +199,7 @@ export default function SignalStudio({ initialSignals }: Props) {
               {/* Identity */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <Lbl text="Name *" tip="Unique snake_case identifier. Example: mshare_dev_mat_step_1m_3m" />
+                  <Lbl text="Name *" tip="Unique snake_case identifier. Example: mshare_deviation_mat" />
                   <input type="text" value={draft.name ?? ''} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
                     className={inp(errors.name)} placeholder="e.g. mshare_dev_mat" />
                   <Err msg={errors.name} />

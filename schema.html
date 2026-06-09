@@ -1579,8 +1579,10 @@ async function initSignals() {
   const ssel = document.getElementById('sig-signal');
   ssel.innerHTML = META.signals.map(s =>
     `<option value="${s.id}">${s.metric} · ${s.period_type}</option>`).join('');
-  // default to the dual-lag mshare signal if present
-  const def = META.signals.find(s => s.id === 'mshare_dev_mat_step_1m_3m');
+  // default signal id comes from config (signal_roles.ui_default), not hard-coded
+  const defId = (META.signal_roles && META.signal_roles.ui_default)
+    || (META.signals[0] && META.signals[0].id);
+  const def = META.signals.find(s => s.id === defId);
   if (def) ssel.value = def.id;
   loadSignals();
 }

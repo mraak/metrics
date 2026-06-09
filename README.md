@@ -278,12 +278,12 @@ The curated library of **definitions, not values** — institutional memory of *
 
 ```bash
 python3 knowledge.py                      # summary + validation
-python3 knowledge.py --signal mshare_dev_mat_trend_3m   # show the LAG/OVER SQL it compiles to
+python3 knowledge.py --signal mshare_deviation_mat   # show the LAG/OVER SQL it compiles to
 ```
 
 Three kinds of entries:
 
-1. **Signal templates** — a named binding of the four signal parameters + an interpretation (e.g. `mshare_dev_mat_trend_3m`); compiles to a window query on demand.
+1. **Signal templates** — a named binding of the four signal parameters + an interpretation (e.g. `mshare_deviation_mat`); compiles to a window query on demand.
 2. **Finding recipes** — the rules / clustering configs / model prompts that compose signals into a Finding archetype (declares `requires_signals`).
 3. **Insight framings** — per-persona `surface_when` / `suppress_when` rules: what to surface, how to phrase, and when to stay silent.
 

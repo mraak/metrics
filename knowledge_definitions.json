@@ -34,21 +34,7 @@
   },
   "signal_templates": {
     "_about": "A Signal = a single comparative metric watched over time. Each template binds the four parameters {metric, period_type, lags, readout} to a name + interpretation. Values are produced on demand by a LAG/OVER window query over region_metrics; never precomputed here. 'lags' are calendar-month offsets (0 = now). 'readout': series = the lagged values; delta = value[0] - value[delta_lag]; slope = linear trend across lags.",
-    "mshare_dev_mat_trend_3m": {
-      "metric": "mshare_deviation",
-      "period_type": "MAT",
-      "lags": [
-        0,
-        1,
-        2,
-        3
-      ],
-      "readout": "delta",
-      "delta_lag": 3,
-      "direction": "higher_is_better",
-      "interpretation": "Is our relative market-share position widening or closing over the last quarter, on a 12-month base? Positive delta = gaining relative ground; negative = slipping. The user's Option-1 example: mshare_deviation on MAT Now / -1M / -2M with a 3-month delta."
-    },
-    "mshare_dev_mat_step_1m_3m": {
+    "mshare_deviation_mat": {
       "metric": "mshare_deviation",
       "period_type": "MAT",
       "lags": [
@@ -67,33 +53,34 @@
       "materiality_from": "rank_sales_eur",
       "interpretation": "Short- and medium-term trajectory of relative market-share position on a 12-month base: is the gap to national average closing or widening at -1M and -3M? Headline readouts are delta_1m (recent nudge) and delta_3m (quarter net). lags 1-3 give the full monthly step series so signal_strength can compute magnitude (total variation), net, and coherence. Feeds Turnaround / Deteriorating / Dangerous-Stability / Unstable recipes."
     },
-    "mshare_dev_rollq_step3": {
+    "mshare_deviation_rollq": {
       "metric": "mshare_deviation",
       "period_type": "RollQ",
       "lags": [
         0,
+        1,
+        2,
         3
       ],
       "readout": "delta",
       "delta_lag": 3,
       "direction": "higher_is_better",
-      "interpretation": "RollQ Now vs RollQ -3Month: relative position shift across one full rolling-quarter window. Window width (RollQ) and step back (LAG 3) are the two orthogonal axes."
+      "interpretation": "RollQ Now vs RollQ -3Month: relative position shift across one full rolling-quarter window. The headline is delta_3m; lags 0-3 carry the full monthly step series so signal_strength can compute V/D/rho on the same 4-point basis as the MAT signals. NOTE: consecutive RollQ months overlap (each shares 2 of its 3 months with the next), so the step series is an autocorrelated/smoothed path, not independent observations. Window width (RollQ) and step back (LAG 3) remain the two orthogonal axes."
     },
-    "growth_py_sales_mat_momentum": {
+    "growth_py_sales_mat": {
       "metric": "growth_py_sales",
       "period_type": "MAT",
       "lags": [
         0,
         1,
         2,
-        3,
-        6
+        3
       ],
       "readout": "slope",
       "direction": "higher_is_better",
-      "interpretation": "Trajectory of YoY sales growth on a 12-month base. The canonical '-10% now, -30% last month, -40% six months ago -> recovering' read. Positive slope = improving even when the level is still negative."
+      "interpretation": "Trajectory of YoY sales growth on a 12-month base. The canonical '-10% now, -30% last month, -40% three months ago -> recovering' read. Positive slope = improving even when the level is still negative. NOTE: standardized to the 4-point monthly basis [0,1,2,3]; the previous -6M lag was dropped so this signal composes with the others. Restore lag 6 here if a longer momentum lookback is required."
     },
-    "growth_vs_fcst_eur_rollq_trend": {
+    "growth_vs_fcst_eur_rollq": {
       "metric": "growth_vs_fcst_eur",
       "period_type": "RollQ",
       "lags": [
@@ -107,7 +94,7 @@
       "direction": "higher_is_better",
       "interpretation": "Are we pulling toward or away from national forecast over the last quarter? Positive = converging on / beating plan; negative = falling behind plan."
     },
-    "growth_py_units_mat_momentum": {
+    "growth_py_units_mat": {
       "metric": "growth_py_units",
       "period_type": "MAT",
       "lags": [
@@ -120,31 +107,36 @@
       "direction": "higher_is_better",
       "interpretation": "Volume-side counterpart to growth_py_sales momentum. Diverging unit vs value trajectories flag price/mix effects."
     },
-    "rank_sales_eur_trend_3m": {
+    "rank_sales_eur_mat": {
       "metric": "rank_sales_eur",
       "period_type": "MAT",
       "lags": [
         0,
+        1,
+        2,
         3
       ],
       "readout": "delta",
       "delta_lag": 3,
       "direction": "higher_is_better",
-      "interpretation": "Change in volume rank over 3 periods. NOTE: this exact signal is cached in region_metrics as rank_trend_3m for performance — a materialized hot signal, not a separate definition.",
+      "interpretation": "Change in volume rank over 3 periods. The headline delta_3m is unchanged by the added lags 1-2, which only enrich the series for signal_strength on the standard 4-point basis. NOTE: the headline delta is cached in region_metrics as rank_trend_3m for performance — a materialized hot signal, not a separate definition; the cache stores the lag-3 delta only, so adding intermediate lags does not affect it.",
       "cached_as": "rank_trend_3m"
     },
-    "mshare_dev_pp_month": {
+    "growth_pp_mshare_dev_month": {
       "metric": "growth_pp_mshare_dev",
       "period_type": "Month",
       "lags": [
-        0
+        0,
+        1,
+        2,
+        3
       ],
       "readout": "series",
       "direction": "higher_is_better",
-      "interpretation": "Period-over-period change in market-share deviation. NOTE: a 'growth-of-growth' column — the comparison's own change is already baked into region_metrics, so this template reads a single column rather than lagging.",
+      "interpretation": "Period-over-period change in market-share deviation. A 'growth-of-growth' column — the comparison's own change is already baked into region_metrics. Standardized to the 4-point monthly basis [0,1,2,3]: lag 0 is the headline pp value (also cached as growth_pp_mshare_dev), and lags 1-3 give its recent history so signal_strength can read a trajectory on the same basis as every other signal.",
       "cached_as": "growth_pp_mshare_dev"
     },
-    "growth_deviation_mat_step_1m_3m": {
+    "growth_deviation_mat": {
       "metric": "growth_deviation",
       "period_type": "MAT",
       "lags": [
@@ -162,7 +154,32 @@
       "strength_kind": "growth",
       "materiality_from": "rank_sales_eur",
       "interpretation": "Region's YoY sales growth minus the brand's volume-weighted national YoY growth (PY), on a 12-month base — is the region out-growing or under-growing the brand overall, and is that gap widening? Peer-relative growth-momentum companion to mshare_deviation; together they place a region in the share x growth quadrant."
+    },
+    "growth_deviation_rollq": {
+      "metric": "growth_deviation",
+      "period_type": "RollQ",
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "readout": "delta",
+      "delta_lags": [
+        1,
+        3
+      ],
+      "direction": "higher_is_better",
+      "strength_kind": "growth",
+      "materiality_from": "rank_sales_eur",
+      "interpretation": "RollQ counterpart to growth_deviation_mat: region YoY sales growth minus the brand's volume-weighted national YoY growth, on a rolling-quarter base rather than 12-month. More responsive to recent swings than the MAT version. NOTE: consecutive RollQ months overlap (each shares 2 of its 3 months with the next), so the step series is an autocorrelated/smoothed path, not independent observations."
     }
+  },
+  "signal_roles": {
+    "_about": "Named references from code and UI to signal_templates, so the chosen signal id is resolved from config at runtime instead of hard-coded in source. Each value MUST be a key in signal_templates (validated by knowledge.py). Add a role here rather than embedding a template id in a .py/.html/.ts file.",
+    "ui_default": "mshare_deviation_mat",
+    "region_position": "mshare_deviation_mat",
+    "region_growth": "growth_deviation_mat"
   },
   "finding_recipes": {
     "_about": "A Finding = open-ended composition of lower facts (usually several signals). Each recipe is method-agnostic: 'rule' here is a human-readable predicate an engine OR an LLM can evaluate. 'requires_signals' lists the signal templates that feed it; 'gap' refers to value vs brand peer-median, 'momentum' to the signal's direction (WIDENING/STABLE/SHRINKING for growth; IMPROVING/STABLE/DECLINING for position). Thresholds come from relevance.magnitude.",
@@ -171,8 +188,8 @@
       "method": "rule",
       "impl": "findings.py",
       "requires_signals": [
-        "mshare_dev_mat_step_1m_3m",
-        "growth_deviation_mat_step_1m_3m"
+        "mshare_deviation_mat",
+        "growth_deviation_mat"
       ],
       "rule": "mshare_deviation now >= 0  AND  growth_deviation now >= 0 (ahead on both).",
       "strength_floor": "low",
@@ -183,8 +200,8 @@
       "label": "Slowing Giant",
       "method": "rule",
       "requires_signals": [
-        "growth_py_sales_mat_momentum",
-        "mshare_dev_mat_trend_3m"
+        "growth_py_sales_mat",
+        "mshare_deviation_mat"
       ],
       "rule": "growth_gap > 0 AND growth_momentum == SHRINKING AND position_momentum == DECLINING",
       "strength_floor": "moderate",
@@ -195,8 +212,8 @@
       "label": "Turnaround",
       "method": "rule",
       "requires_signals": [
-        "mshare_dev_mat_trend_3m",
-        "growth_py_sales_mat_momentum"
+        "mshare_deviation_mat",
+        "growth_py_sales_mat"
       ],
       "rule": "position_gap < 0 AND position_momentum == IMPROVING AND persistence >= 3_periods",
       "strength_floor": "moderate",
@@ -207,9 +224,9 @@
       "label": "Deteriorating",
       "method": "rule",
       "requires_signals": [
-        "growth_py_sales_mat_momentum",
-        "mshare_dev_mat_trend_3m",
-        "growth_vs_fcst_eur_rollq_trend"
+        "growth_py_sales_mat",
+        "mshare_deviation_mat",
+        "growth_vs_fcst_eur_rollq"
       ],
       "rule": "growth_gap < 0 AND growth_momentum == SHRINKING AND position_momentum == DECLINING",
       "strength_floor": "high",
@@ -220,8 +237,8 @@
       "label": "Riding the Wave",
       "method": "rule",
       "requires_signals": [
-        "growth_vs_fcst_eur_rollq_trend",
-        "mshare_dev_mat_trend_3m"
+        "growth_vs_fcst_eur_rollq",
+        "mshare_deviation_mat"
       ],
       "rule": "growth_vs_fcst >= +10pp AND position_momentum == STABLE",
       "strength_floor": "moderate",
@@ -232,8 +249,8 @@
       "label": "Weak Foundation",
       "method": "rule",
       "requires_signals": [
-        "growth_py_sales_mat_momentum",
-        "mshare_dev_mat_trend_3m"
+        "growth_py_sales_mat",
+        "mshare_deviation_mat"
       ],
       "rule": "growth_gap > 0 AND (position_gap <= -1.0pp OR position_momentum != IMPROVING)",
       "strength_floor": "low",
@@ -244,8 +261,8 @@
       "label": "Dangerous Stability",
       "method": "rule",
       "requires_signals": [
-        "growth_py_sales_mat_momentum",
-        "mshare_dev_mat_trend_3m"
+        "growth_py_sales_mat",
+        "mshare_deviation_mat"
       ],
       "rule": "abs(growth_momentum_delta) < 2pp AND position_momentum == DECLINING",
       "strength_floor": "moderate",
@@ -256,7 +273,7 @@
       "label": "Unstable / Erratic",
       "method": "rule",
       "requires_signals": [
-        "mshare_dev_mat_step_1m_3m"
+        "mshare_deviation_mat"
       ],
       "rule": "signal.magnitude >= loud AND abs(signal.coherence) < 0.3   (big total variation, near-zero net — the position is swinging hard but going nowhere)",
       "strength_floor": "moderate",
@@ -269,8 +286,8 @@
       "method": "rule",
       "impl": "findings.py",
       "requires_signals": [
-        "mshare_dev_mat_step_1m_3m",
-        "growth_deviation_mat_step_1m_3m"
+        "mshare_deviation_mat",
+        "growth_deviation_mat"
       ],
       "rule": "mshare_deviation now < 0  AND  growth_deviation now < 0  (below peers on share AND growth). Severity rises if either axis is deteriorating / loud.",
       "strength_floor": "high",
@@ -282,8 +299,8 @@
       "method": "rule",
       "impl": "findings.py",
       "requires_signals": [
-        "mshare_dev_mat_step_1m_3m",
-        "growth_deviation_mat_step_1m_3m"
+        "mshare_deviation_mat",
+        "growth_deviation_mat"
       ],
       "rule": "mshare_deviation now >= 0 (ahead on share)  AND  growth_deviation now < 0 (under-growing).",
       "strength_floor": "moderate",
@@ -295,8 +312,8 @@
       "method": "rule",
       "impl": "findings.py",
       "requires_signals": [
-        "mshare_dev_mat_step_1m_3m",
-        "growth_deviation_mat_step_1m_3m"
+        "mshare_deviation_mat",
+        "growth_deviation_mat"
       ],
       "rule": "mshare_deviation now < 0 (below on share)  AND  growth_deviation now >= 0 (out-growing).",
       "strength_floor": "low",

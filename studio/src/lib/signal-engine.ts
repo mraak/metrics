@@ -1,4 +1,5 @@
-import { metricsDb, toolDb } from './db'
+import { metricsDb } from './db'
+import { readSignalByName } from './knowledge-store'
 import type { SignalDefinition, SignalRow, SignalStrength, FilterCondition, SegmentValues } from './types'
 
 // ── Column validation ─────────────────────────────────────────────────────────
@@ -189,31 +190,7 @@ export function getSegmentValues(def: SignalDefinition): SegmentValues[] {
   })
 }
 
-// ── Load a saved signal definition from toolDb ───────────────────────────────
+// ── Load a saved signal definition from knowledge_definitions.json ───────────
 export function getSignalById(id: string): SignalDefinition | null {
-  const db = toolDb()
-  const row = db.prepare('SELECT * FROM signal_definitions WHERE id = ?').get(id) as Record<string, unknown> | undefined
-  if (!row) return null
-  return deserializeSignal(row)
-}
-
-export function deserializeSignal(r: Record<string, unknown>): SignalDefinition {
-  return {
-    id: r.id as string,
-    name: r.name as string,
-    label: r.label as string,
-    source_table: (r.source_table as string | undefined) ?? 'region_metrics',
-    entity_dimension: (r.entity_dimension as string | undefined) ?? 'region_name',
-    time_dimension: (r.time_dimension as string | undefined) ?? 'year_month',
-    filters: JSON.parse((r.filters as string | undefined) ?? '[]') as FilterCondition[],
-    segment_by: JSON.parse((r.segment_by as string | undefined) ?? '[]') as string[],
-    metric: r.metric as string,
-    lags: JSON.parse(r.lags as string) as number[],
-    delta_lags: JSON.parse(r.delta_lags as string) as number[],
-    direction: r.direction as SignalDefinition['direction'],
-    strength_kind: r.strength_kind as SignalDefinition['strength_kind'],
-    loud_threshold: r.loud_threshold as number,
-    created_at: r.created_at as string,
-    updated_at: r.updated_at as string,
-  }
+  return readSignalByName(id)
 }
