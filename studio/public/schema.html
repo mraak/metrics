@@ -1273,6 +1273,10 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
     <div class="signals-wrap">
       <div class="signals-toolbar">
         <span><label>Brand</label><select id="sa-brand" onchange="loadSigan()"></select></span>
+        <span class="seg-group" title="Region signals run over postal regions; Territory signals over territories (their entities never overlap, so composites stay within one level)">
+          <button class="seg active" id="sa-level-region" onclick="setSaLevel('region')">Region</button>
+          <button class="seg" id="sa-level-territory" onclick="setSaLevel('territory')">Territory</button>
+        </span>
         <span class="seg-group">
           <button class="seg active" id="sa-mode-loud" onclick="setSaMode('loud')">🔝 Loudest</button>
           <button class="seg" id="sa-mode-compose" onclick="setSaMode('compose')">🧬 Compose</button>
@@ -2095,6 +2099,7 @@ function sortBy(i) {
 
 /* ── Signal Analysis tab (cross-metric loudness + composites) ── */
 let siganInited = false, saMode = 'loud', saData = null;
+let saLevel = 'region', saComposeRows = [], saSearchCombos = [], saComposeSignals = [];
 const SA_INTERP = {};   // signal id -> curated interpretation (for tooltips)
 const SA_TAG = {
   eruption: { c: '#cc3322', l: '🌋 Eruption' },
@@ -2130,7 +2135,31 @@ async function initSigan() {
       .sa-desc code{font-family:'Menlo',monospace;font-size:11px;background:#eaeef3;padding:1px 4px;border-radius:3px}
       body.dark-theme .sa-desc{color:#aab;background:#11151f;border-color:#222a38;border-left-color:#6ab4d8}
       body.dark-theme .sa-desc b{color:#dde}
-      body.dark-theme .sa-desc code{background:#1a2030}`;
+      body.dark-theme .sa-desc code{background:#1a2030}
+      .cd-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:12px 0}
+      .cd-sig{border:1px solid #e0e0e0;border-radius:5px;padding:8px 10px}
+      body.dark-theme .cd-sig{border-color:#222a38}
+      .cd-sig-name{font-weight:600;color:#333;font-size:11px;margin-bottom:4px}
+      body.dark-theme .cd-sig-name{color:#bbb}
+      .cd-sig-stats{font-size:11px;margin-top:3px}
+      .cd-verdict{font-size:12.5px;font-weight:600;margin:8px 0 5px;padding:4px 12px;border-radius:5px;display:inline-block}
+      .cd-verdict.reinforcing-up{background:#e6f4ee;color:#1a7a45}
+      .cd-verdict.reinforcing-down{background:#fdf0f0;color:#c02020}
+      .cd-verdict.divergent{background:#fff5e6;color:#9a5a00}
+      .cd-verdict.mixed{background:#f0f4f8;color:#4a5568}
+      body.dark-theme .cd-verdict.reinforcing-up{background:#0d2a1f;color:#4fd488}
+      body.dark-theme .cd-verdict.reinforcing-down{background:#2a0d0d;color:#f47474}
+      body.dark-theme .cd-verdict.divergent{background:#2a1f0d;color:#f0a040}
+      body.dark-theme .cd-verdict.mixed{background:#131820;color:#9ab}
+      .cd-meanings{list-style:disc;padding-left:18px;font-size:12.5px;color:#555;line-height:1.7;margin:6px 0 10px}
+      body.dark-theme .cd-meanings{color:#aaa}
+      .cd-mad{background:#f5f8ff;border:1px solid #d0dff0;border-left:3px solid #2266aa;border-radius:5px;padding:9px 13px;font-size:11.5px;color:#4a5a7a;line-height:1.6;margin-top:14px}
+      body.dark-theme .cd-mad{background:#0d1525;border-color:#1e2e48;border-left-color:#5599cc;color:#8aaccc}
+      .cd-mad b{color:#2266aa}
+      body.dark-theme .cd-mad b{color:#6ab4d8}
+      .cd-row-click{cursor:pointer}
+      .cd-row-click:hover td{background:#f5f7fc}
+      body.dark-theme .cd-row-click:hover td{background:#181f2e}`;
     document.head.appendChild(st);
   }
   try {
@@ -2178,6 +2207,17 @@ function setSaMode(m) {
   else if (m === 'search') runSaSearch();
 }
 
+function setSaLevel(level) {
+  saLevel = level;
+  ['region', 'territory'].forEach(l =>
+    document.getElementById('sa-level-' + l).classList.toggle('active', l === level));
+  renderComposeBar();
+  if (saMode === 'loud') renderSaLoud();
+  else if (saMode === 'compose') document.getElementById('sa-results').innerHTML =
+    '<p style="color:#888;font-size:13px">Level changed — pick signals above, then <b>Compute composite</b>.</p>';
+  else if (saMode === 'search') runSaSearch();
+}
+
 async function loadSigan() {
   const brand = document.getElementById('sa-brand').value;
   const out = document.getElementById('sa-results');
@@ -2195,12 +2235,13 @@ async function loadSigan() {
 function renderSaLoud() {
   if (!saData) return;
   const sel = document.getElementById('sa-topx').value;
-  const total = saData.total || saData.ranked.length;
-  const rows = sel === 'all' ? saData.ranked
-    : saData.ranked.slice(0, Math.max(1, Math.round(total * parseFloat(sel))));
+  const all = saData.ranked.filter(r => r.level === saLevel);
+  const total = all.length;
+  const rows = sel === 'all' ? all
+    : all.slice(0, Math.max(1, Math.round(total * parseFloat(sel))));
   const scope = sel === 'all' ? 'all' : `top ${Math.round(parseFloat(sel) * 100)}%`;
   document.getElementById('sa-meta').textContent =
-    `${saData.brand} · as-of ${saData.asof} · ${scope} loudest across all metrics · ${rows.length} of ${total} signals`;
+    `${saData.brand} · as-of ${saData.asof} · ${scope} loudest ${saLevel} signals · ${rows.length} of ${total}`;
   const body = rows.map(r => `<tr>
       <td>${saTagBadge(r.tag)}</td>
       <td class="sa-mono" title="${(SA_INTERP[r.signal] || '').replace(/"/g, '&quot;')}">${saSig(r.signal)}</td>
@@ -2226,8 +2267,10 @@ function renderSaLoud() {
 }
 
 function renderComposeBar() {
-  const def = new Set([(META.signal_roles || {}).region_position, (META.signal_roles || {}).region_growth].filter(Boolean));
-  const chks = META.signals.map(s =>
+  const roles = META.signal_roles || {};
+  const def = new Set([roles[saLevel + '_position'], roles[saLevel + '_growth']].filter(Boolean));
+  const levelSigs = (META.signals || []).filter(s => s.level === saLevel);
+  const chks = levelSigs.map(s =>
     `<label class="sa-chk"><input type="checkbox" class="sa-csig" value="${s.id}" ${def.has(s.id) ? 'checked' : ''}> ${saSig(s.id)}</label>`).join('');
   document.getElementById('sa-compose-bar').innerHTML =
     `<div class="sa-bar">${chks}</div>
@@ -2244,20 +2287,23 @@ async function runSaCompose() {
   try { d = await (await fetch(`/api/report/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${sigs.join(',')}`)).json(); }
   catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
   if (d.error) { out.innerHTML = `<div class="sig-error">${d.error}</div>`; return; }
+  saComposeRows = d.rows || [];
+  saComposeSignals = sigs;
   document.getElementById('sa-meta').textContent =
-    `${d.brand} · as-of ${d.asof} · composite of ${sigs.length} signals · ${d.rows.length} regions · standardized (σ) units`;
+    `${d.brand} · as-of ${d.asof} · composite of ${sigs.length} signals · ${d.rows.length} entities · standardized (σ) units`;
   const arrow = dir => dir === 'improving' ? '<span class="pos">▲</span>'
     : dir === 'deteriorating' ? '<span class="neg">▼</span>' : '·';
   const body = d.rows.slice(0, 40).map((r, i) => {
     const contrib = Object.entries(r.contrib)
       .map(([k, v]) => `${saSig(k)} ${v.loudness.toFixed(1)}${arrow(v.dir)}`).join(' · ');
-    return `<tr><td class="num">${i + 1}</td><td>${r.region}</td>
+    return `<tr class="cd-row-click" onclick="openComposeDetail(${i})">
+      <td class="num">${i + 1}</td><td>${r.region}</td>
       <td class="num"><b>${r.composite_loudness.toFixed(2)}</b></td>
       <td class="sa-contrib">${contrib}</td>
       <td style="white-space:normal;max-width:360px;color:#555">${r.read}</td></tr>`;
   }).join('');
   out.innerHTML = `<table class="sa-table"><thead><tr>
-      <th class="num">#</th><th>region</th>
+      <th class="num">#</th><th title="Click any row to see per-signal charts and possible meanings">entity · click for detail</th>
       <th class="num" title="Total variation of the standardized N-D trajectory">composite loudness</th>
       <th title="Each signal's own standardized movement + direction (interpret the composite)">contribution by signal</th>
       <th title="Plain-language read: reinforcing vs divergent, and the dominant driver">interpretation</th>
@@ -2272,19 +2318,164 @@ async function runSaSearch() {
   try { d = await (await fetch(`/api/report/signal_analysis/search?brand=${encodeURIComponent(brand)}&k=3`)).json(); }
   catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
   if (d.error) { out.innerHTML = `<div class="sig-error">${d.error}</div>`; return; }
+  const sigLevels = {};
+  (META.signals || []).forEach(s => { sigLevels[s.id] = s.level; });
+  const filtered = (d.combos || []).filter(c => c.signals.every(sid => sigLevels[sid] === saLevel));
+  saSearchCombos = filtered;
   document.getElementById('sa-meta').textContent =
-    `${d.brand} · as-of ${d.asof} · loudest signal combinations (size 2–${d.max_k})`;
-  const body = d.combos.slice(0, 25).map((c, i) => `<tr>
+    `${d.brand} · as-of ${d.asof} · loudest ${saLevel} combinations (size 2–${d.max_k}) · ${filtered.length} combos`;
+  const body = filtered.slice(0, 25).map((c, i) => `<tr class="cd-row-click" onclick="openSearchDetail(${i})">
       <td class="num">${i + 1}</td>
       <td class="sa-mono">${c.signals.map(saSig).join('  +  ')}</td>
       <td class="num"><b>${c.loudness_p95.toFixed(2)}</b></td>
       <td class="num">${c.max_loudness.toFixed(2)}</td>
       <td>${c.top_regions.join(', ')}</td></tr>`).join('');
   out.innerHTML = `<table class="sa-table"><thead><tr>
-      <th class="num">#</th><th>composite (signals combined)</th>
+      <th class="num">#</th><th title="Click any row to drill into charts for the top entities">composite (signals combined) · click for detail</th>
       <th class="num" title="How loud its loudest regions get (95th pctl of composite loudness)">loudness p95</th>
       <th class="num">max</th><th>loudest regions</th>
     </tr></thead><tbody>${body}</tbody></table>`;
+}
+
+/* ── Composite detail helpers ── */
+
+function miniSparkline(series, color, w, h) {
+  w = w || 90; h = h || 44;
+  const pad = 6;
+  const min = Math.min(...series), max = Math.max(...series);
+  const range = max - min || 0.0001;
+  const xf = i => pad + i * ((w - 2 * pad) / (series.length - 1));
+  const yf = v => pad + (1 - (v - min) / range) * (h - 2 * pad);
+  const pts = series.map((v, i) => `${xf(i).toFixed(1)},${yf(v).toFixed(1)}`).join(' ');
+  const dots = series.map((v, i) =>
+    `<circle cx="${xf(i).toFixed(1)}" cy="${yf(v).toFixed(1)}" r="2.5" fill="${color}"/>`).join('');
+  const labels = [series[0], series[series.length - 1]].map((v, idx) => {
+    const xi = idx === 0 ? pad : w - pad;
+    const anchor = idx === 0 ? 'start' : 'end';
+    return `<text x="${xi}" y="${h + 11}" font-size="9" fill="#aaa" text-anchor="${anchor}">${v.toFixed(1)}</text>`;
+  }).join('');
+  return `<svg width="${w}" height="${h + 14}" viewBox="0 0 ${w} ${h + 14}" style="overflow:visible;display:block">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.8" stroke-linejoin="round" opacity="0.9"/>
+    ${dots}${labels}</svg>`;
+}
+
+function possibleMeanings(contrib, sigIds) {
+  if (!contrib || !sigIds || !sigIds.length) return ['No contribution data available.'];
+  const allDirs = sigIds.map(sid => (contrib[sid] || {}).dir || 'flat');
+  const improving = allDirs.filter(d => d === 'improving').length;
+  const deteriorating = allDirs.filter(d => d === 'deteriorating').length;
+  if (improving === sigIds.length) return [
+    'All tracked metrics improving simultaneously — broad-based positive momentum.',
+    'Possible execution win: field activity, product positioning, and distribution reinforcing each other.',
+    'Check whether this outpaces the franchise trend or if the whole market is rising.',
+  ];
+  if (deteriorating === sigIds.length) return [
+    'All tracked metrics deteriorating together — broad-based pressure.',
+    'Possible causes: competitive displacement, rep productivity gap, market contraction, or missing promotion.',
+    'Escalation candidate — check if the territory level confirms the same pattern.',
+  ];
+  if (improving > 0 && deteriorating > 0) return [
+    'Divergent signals — some metrics improving while others decline.',
+    'Possible mean-reversion: a strong rank correcting after a run-up in a lagging metric.',
+    'Or a leading indicator is turning before the lagging one follows — watch next period for convergence.',
+    'Divergent composites drive volatility: the pull between forces is what makes the bundle loud.',
+  ];
+  return [
+    'Mixed movement: most metrics flat, one or two making a minor move.',
+    'Low-conviction signal — monitor, but not a priority for action.',
+  ];
+}
+
+const MAD_HTML = `<div class="cd-mad">
+  <b>What is MAD?</b> Before compositing, each metric is standardized by its own <b>step-scale</b>: the
+  <b>Median Absolute Deviation (MAD)</b> of one-month changes, pooled over all brands and entities at this grain.
+  MAD is a robust measure of a typical monthly step — unlike standard deviation it ignores extremes.
+  A 1-MAD step in a 1–100 rank and a 1-MAD step in a ±15 pp deviation count <em>equally</em> in the composite,
+  so differently-scaled metrics are truly addable. Composite loudness is in <b>σ units</b> (multiples of the
+  combined step-scale), making values comparable across any metric combination.
+</div>`;
+
+function openComposeDetail(i) {
+  const row = saComposeRows[i];
+  if (!row) return;
+  const sigIds = saComposeSignals;
+  const cards = sigIds.map(sid => {
+    const c = row.contrib[sid];
+    if (!c) return '';
+    const col = c.net > 0.01 ? '#1a8a55' : c.net < -0.01 ? '#cc3322' : '#888';
+    const arrowCol = c.dir === 'improving' ? '#1a8a55' : c.dir === 'deteriorating' ? '#cc3322' : '#888';
+    const arrow = c.dir === 'improving' ? '▲' : c.dir === 'deteriorating' ? '▼' : '—';
+    return `<div class="cd-sig">
+      <div class="cd-sig-name">${saSig(sid)}</div>
+      ${miniSparkline(c.series, col)}
+      <div class="cd-sig-stats" style="color:${arrowCol}">${arrow} net ${c.net >= 0 ? '+' : ''}${c.net.toFixed(2)} · ${c.dir}</div>
+    </div>`;
+  }).join('');
+  const allDirs = sigIds.map(sid => (row.contrib[sid] || {}).dir);
+  const allUp = allDirs.every(d => d === 'improving');
+  const allDown = allDirs.every(d => d === 'deteriorating');
+  const allFlat = allDirs.every(d => d === 'flat');
+  let vc, vt;
+  if (allUp)        { vc = 'reinforcing-up';   vt = '▲ Reinforcing — all metrics improving'; }
+  else if (allDown) { vc = 'reinforcing-down'; vt = '▼ Reinforcing — all metrics deteriorating'; }
+  else if (allFlat) { vc = 'mixed';            vt = '— All quiet, no net direction'; }
+  else              { vc = 'divergent';        vt = '⟺ Divergent — signals pulling opposite ways'; }
+  const bullets = possibleMeanings(row.contrib, sigIds);
+  openInfo(`Composite detail · ${row.region}`,
+    `<div class="info-note">Composite loudness <b>${row.composite_loudness.toFixed(2)} σ</b> — ${row.read}</div>
+     <div class="cd-verdict ${vc}">${vt}</div>
+     <div class="cd-grid">${cards}</div>
+     <b style="font-size:12px;color:#666;display:block;margin:4px 0 2px">Possible meanings</b>
+     <ul class="cd-meanings">${bullets.map(b => `<li>${b}</li>`).join('')}</ul>
+     ${MAD_HTML}`);
+}
+
+async function openSearchDetail(i) {
+  const combo = saSearchCombos[i];
+  if (!combo) return;
+  const brand = document.getElementById('sa-brand').value;
+  openInfo(`${combo.signals.map(saSig).join(' + ')}`, 'Loading top entities…');
+  let d;
+  try { d = await (await fetch(`/api/report/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${combo.signals.join(',')}`)).json(); }
+  catch (e) { openInfo('Search detail', '<div class="sig-error">Request failed.</div>'); return; }
+  if (d.error) { openInfo('Search detail', `<div class="sig-error">${d.error}</div>`); return; }
+  const topRows = (d.rows || []).slice(0, 5);
+  const entityBlocks = topRows.map(row => {
+    const sigIds = combo.signals;
+    const cards = sigIds.map(sid => {
+      const c = row.contrib[sid];
+      if (!c) return '';
+      const col = c.net > 0.01 ? '#1a8a55' : c.net < -0.01 ? '#cc3322' : '#888';
+      const arrowCol = c.dir === 'improving' ? '#1a8a55' : c.dir === 'deteriorating' ? '#cc3322' : '#888';
+      const arrow = c.dir === 'improving' ? '▲' : c.dir === 'deteriorating' ? '▼' : '—';
+      return `<div class="cd-sig">
+        <div class="cd-sig-name">${saSig(sid)}</div>
+        ${miniSparkline(c.series, col)}
+        <div class="cd-sig-stats" style="color:${arrowCol}">${arrow} net ${c.net >= 0 ? '+' : ''}${c.net.toFixed(2)} · ${c.dir}</div>
+      </div>`;
+    }).join('');
+    const allDirs = sigIds.map(sid => (row.contrib[sid] || {}).dir);
+    const allUp = allDirs.every(d => d === 'improving');
+    const allDown = allDirs.every(d => d === 'deteriorating');
+    let vc, vt;
+    if (allUp)        { vc = 'reinforcing-up';   vt = '▲ Reinforcing up'; }
+    else if (allDown) { vc = 'reinforcing-down'; vt = '▼ Reinforcing down'; }
+    else              { vc = 'divergent';        vt = '⟺ Divergent'; }
+    return `<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-weight:600;font-size:12px;margin-bottom:6px">${row.region}
+        <span style="font-weight:400;color:#888"> · ${row.composite_loudness.toFixed(2)} σ</span>
+        <span class="cd-verdict ${vc}" style="font-size:11px;padding:2px 8px;margin-left:8px">${vt}</span>
+      </div>
+      <div class="cd-grid">${cards}</div>
+    </div>`;
+  }).join('');
+  const bullets = possibleMeanings(((d.rows || [])[0] || {}).contrib || {}, combo.signals);
+  openInfo(`${combo.signals.map(saSig).join(' + ')} · top ${topRows.length} entities`,
+    `<div class="info-note">p95 loudness <b>${combo.loudness_p95.toFixed(2)} σ</b> · max <b>${combo.max_loudness.toFixed(2)} σ</b> · ${d.rows.length} entities total</div>
+     ${entityBlocks}
+     <b style="font-size:12px;color:#666;display:block;margin:4px 0 2px">Possible meanings (based on loudest entity)</b>
+     <ul class="cd-meanings">${bullets.map(b => `<li>${b}</li>`).join('')}</ul>
+     ${MAD_HTML}`);
 }
 
 /* ── Findings tab ── */

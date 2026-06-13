@@ -243,18 +243,22 @@ export function analyzeAll(brandParam?: string, asofParam?: string): Json {
 
 // ── Composites ───────────────────────────────────────────────────────────────
 
-function stdSteps(sig: SignalTemplate, brand: string): Record<string, Record<string, number[]>> {
+// Per entity at every month: the signal's standardized step vector (z-steps,
+// for composite loudness) AND its raw series (oldest→now, for charting).
+interface StdEntry { steps: number[]; series: number[] }
+
+function stdSteps(sig: SignalTemplate, brand: string): Record<string, Record<string, StdEntry>> {
   const table = sourceTable(sig)
   const ent = entityDim(sig)
   const scale = stepScale(sig.metric, sig.period_type, table, ent)
   const wins = windows(sig.metric, brand, sig.period_type, table, ent)
-  const out: Record<string, Record<string, number[]>> = {}
+  const out: Record<string, Record<string, StdEntry>> = {}
   for (const [region, hist] of Object.entries(wins)) {
-    const byYm: Record<string, number[]> = {}
+    const byYm: Record<string, StdEntry> = {}
     for (const [ym, series] of hist) {
       const steps: number[] = []
       for (let i = 1; i < series.length; i++) steps.push((series[i] - series[i - 1]) / scale)
-      byYm[ym] = steps
+      byYm[ym] = { steps, series }
     }
     out[region] = byYm
   }
@@ -263,7 +267,7 @@ function stdSteps(sig: SignalTemplate, brand: string): Record<string, Record<str
 
 function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
   const sigs = signalTemplates(DEFS())
-  const stepsBySig: Record<string, Record<string, Record<string, number[]>>> = {}
+  const stepsBySig: Record<string, Record<string, Record<string, StdEntry>>> = {}
   for (const sid of sigIds) stepsBySig[sid] = stdSteps(sigs[sid], brand)
   // entities present in every selected signal at asof
   const sets: Set<string>[] = sigIds.map(sid =>
@@ -274,13 +278,15 @@ function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
   const rows: Json[] = []
   for (const rg of common) {
     let perStep: number[][] | null = null
-    const contrib: Record<string, { loudness: number; dir: string }> = {}
+    const contrib: Record<string, { loudness: number; dir: string; net: number; series: number[] }> = {}
     for (const sid of sigIds) {
-      const z = stepsBySig[sid][rg][asof]
+      const { steps: z, series } = stepsBySig[sid][rg][asof]
       const hib = sigs[sid].direction === 'higher_is_better'
       contrib[sid] = {
         loudness: round(z.reduce((a, s) => a + Math.abs(s), 0), 3),
         dir: dirWord(z.reduce((a, s) => a + s, 0), hib),
+        net: round(series[series.length - 1] - series[0], 2),   // raw net (metric units), oldest→now
+        series: series.map(v => round(v, 2)),                   // raw trajectory for charting
       }
       if (perStep == null) perStep = z.map(s => [s])
       else z.forEach((s, i) => (perStep as number[][])[i].push(s))
