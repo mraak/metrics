@@ -1,5 +1,6 @@
 import { metricsDb } from './db'
 import { readSignalByName } from './knowledge-store'
+import { knowledgeDefs, signalStrength } from './knowledge'
 import type { SignalDefinition, SignalRow, SignalStrength, FilterCondition, SegmentValues } from './types'
 
 // ── Column validation ─────────────────────────────────────────────────────────
@@ -49,40 +50,15 @@ function buildFilterSQL(
 }
 
 // ── Strength computation ──────────────────────────────────────────────────────
+// Thresholds come from knowledge_definitions.json (loudness ladder per
+// strength_kind + coherence bands) — the same rules the report APIs use, so a
+// signal gets one shape label everywhere.
 export function computeStrength(series: number[], def: SignalDefinition): SignalStrength {
   if (series.length < 2) {
     return { magnitude: 0, net: 0, coherence: 0, shape: 'quiet' }
   }
-
-  let magnitude = 0
-  for (let i = 1; i < series.length; i++) {
-    magnitude += Math.abs(series[i] - series[i - 1])
-  }
-
-  const net = series[series.length - 1] - series[0]
-  const coherence = magnitude > 0 ? net / magnitude : 0
-
-  let shape: SignalStrength['shape']
-  if (magnitude < 0.3) {
-    shape = 'quiet'
-  } else if (Math.abs(coherence) >= 0.8) {
-    shape = 'trend'
-  } else if (Math.abs(coherence) <= 0.2 && magnitude >= def.loud_threshold * 0.5) {
-    shape = 'unstable'
-  } else {
-    const allSameSign = net !== 0 && series.slice(1).every((v, i) => {
-      const step = v - series[i]
-      return net > 0 ? step >= 0 : step <= 0
-    })
-    shape = allSameSign ? 'trend' : 'mixed'
-  }
-
-  return {
-    magnitude: Math.round(magnitude * 1000) / 1000,
-    net: Math.round(net * 1000) / 1000,
-    coherence: Math.round(coherence * 1000) / 1000,
-    shape,
-  }
+  const st = signalStrength(series, def.direction, knowledgeDefs(), def.strength_kind)
+  return { magnitude: st.magnitude, net: st.net, coherence: st.coherence, shape: st.shape }
 }
 
 // ── Core generic signal computation ──────────────────────────────────────────

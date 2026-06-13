@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { metricsDb, toolDb, parseFindingRow } from '@/lib/db'
+import { metricsDb, toolDb } from '@/lib/db'
+import { readFindingDefById } from '@/lib/knowledge-store'
 import { classifyFindings } from '@/lib/finding-engine'
 import type { FindingDefinition, FindingRow } from '@/lib/types'
 
@@ -23,9 +24,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     let def: FindingDefinition
     if (body.definition_id) {
-      const row = db.prepare('SELECT * FROM finding_definitions WHERE id = ?').get(body.definition_id)
-      if (!row) return NextResponse.json({ error: `Finding definition not found: ${body.definition_id}` }, { status: 404 })
-      def = parseFindingRow(row as Parameters<typeof parseFindingRow>[0])
+      const found = readFindingDefById(body.definition_id)
+      if (!found) return NextResponse.json({ error: `Finding definition not found: ${body.definition_id}` }, { status: 404 })
+      def = found
     } else if (body.definition) {
       def = body.definition
     } else {

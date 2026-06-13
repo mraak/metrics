@@ -1597,17 +1597,17 @@ function headerDef(label) {
 async function initSignals() {
   signalsInited = true;
   try {
-    META = await (await fetch('/api/meta')).json();
+    META = await (await fetch('/api/report/meta')).json();
   } catch (e) {
     document.getElementById('sig-results').innerHTML =
-      '<div class="sig-error">No API server. Run <code>python3 server.py</code> and reload.</div>';
+      '<div class="sig-error">No API server. Run <code>npm run dev</code> in studio/ and reload.</div>';
     return;
   }
   const bsel = document.getElementById('sig-brand');
   bsel.innerHTML = META.brands.map(b => `<option>${b}</option>`).join('');
   const ssel = document.getElementById('sig-signal');
   ssel.innerHTML = META.signals.map(s =>
-    `<option value="${s.id}">${s.metric} · ${s.period_type}</option>`).join('');
+    `<option value="${s.id}">${s.metric} · ${s.period_type}${s.level && s.level !== 'region' ? ' · ' + s.level.toUpperCase() : ''}</option>`).join('');
   // default signal id comes from config (signal_roles.ui_default), not hard-coded
   const defId = (META.signal_roles && META.signal_roles.ui_default)
     || (META.signals[0] && META.signals[0].id);
@@ -1632,13 +1632,13 @@ async function loadSignals() {
   out.textContent = 'Loading…';
   let data;
   try {
-    data = await (await fetch(`/api/signals?brand=${encodeURIComponent(brand)}&signal=${encodeURIComponent(signal)}`)).json();
+    data = await (await fetch(`/api/report/signals?brand=${encodeURIComponent(brand)}&signal=${encodeURIComponent(signal)}`)).json();
   } catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
   if (data.error) { out.innerHTML = `<div class="sig-error">${data.error}</div>`; return; }
 
   document.getElementById('sig-interp').textContent = data.interpretation || '';
   document.getElementById('sig-meta').textContent =
-    `${data.brand} · ${data.franchise} · ${data.metric} @ ${data.period} · as-of ${data.asof} · ${data.rows.length} regions`;
+    `${data.brand} · ${data.franchise} · ${data.metric} @ ${data.period} · as-of ${data.asof} · ${data.rows.length} ${data.level === 'territory' ? 'territories' : (data.level || 'region') + 's'}`;
   sigData = data;
   renderSignals();
   loadScatter(brand);
@@ -1673,7 +1673,7 @@ function quadAxes() {
 async function loadScatter(brand) {
   const el = document.getElementById('sig-scatter');
   let d;
-  try { d = await (await fetch('/api/trails?brand=' + encodeURIComponent(brand))).json(); }
+  try { d = await (await fetch('/api/report/trails?brand=' + encodeURIComponent(brand))).json(); }
   catch (e) { el.innerHTML = ''; document.getElementById('sig-trails').innerHTML = ''; return; }
   if (!d || d.error || !d.points) { el.innerHTML = ''; document.getElementById('sig-trails').innerHTML = ''; return; }
   scatterData = d; trailSel = new Set();
@@ -1883,8 +1883,10 @@ function renderSignals() {
     const lbl = 'Δ' + k.replace('delta_', '').replace('m', 'M');
     return { label: lbl, def: headerDef(lbl), num: true, group: 'intrinsic', key: r => r.readout[k], cell: r => signed(r.readout[k]) };
   };
+  const entLbl = sigData.level === 'territory' ? 'Territory'
+    : (sigData.level ? sigData.level[0].toUpperCase() + sigData.level.slice(1) : 'Region');
   sigCols = [
-    { label: 'Region', def: SIG_DEFS['Region'], type: 'str', group: 'id', key: r => r.region, cell: r => r.region },
+    { label: entLbl, def: SIG_DEFS['Region'], type: 'str', group: 'id', key: r => r.region, cell: r => r.region },
     { label: 'Trajectory (oldest→now)', def: SIG_DEFS['Trajectory (oldest→now)'], group: 'intrinsic', key: r => r.now, cell: r => `<span class="spark">${fmtSeries(r.series)}</span>` },
     ...dlKeys.map(dCol),
     { label: 'V', def: SIG_DEFS['V'], num: true, group: 'intrinsic', key: r => r.strength.magnitude, cell: r => r.strength.magnitude.toFixed(2) },
@@ -2026,10 +2028,10 @@ async function initSigan() {
     document.head.appendChild(st);
   }
   try {
-    if (!META) META = await (await fetch('/api/meta')).json();
+    if (!META) META = await (await fetch('/api/report/meta')).json();
   } catch (e) {
     document.getElementById('sa-results').innerHTML =
-      '<div class="sig-error">No API server. Run <code>python3 server.py</code> and reload.</div>';
+      '<div class="sig-error">No API server. Run <code>npm run dev</code> in studio/ and reload.</div>';
     return;
   }
   (META.signals || []).forEach(s => { SA_INTERP[s.id] = s.interpretation || ''; });
@@ -2056,7 +2058,7 @@ async function loadSigan() {
   const out = document.getElementById('sa-results');
   out.textContent = 'Loading…';
   try {
-    saData = await (await fetch('/api/signal_analysis?brand=' + encodeURIComponent(brand))).json();
+    saData = await (await fetch('/api/report/signal_analysis?brand=' + encodeURIComponent(brand))).json();
   } catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
   if (saData.error) { out.innerHTML = `<div class="sig-error">${saData.error}</div>`; return; }
   document.getElementById('sa-legend').innerHTML = Object.entries(saData.tag_legend)
@@ -2087,7 +2089,7 @@ function renderSaLoud() {
   document.getElementById('sa-results').innerHTML = `<table class="sa-table">
     <thead><tr>
       <th title="Eruption=loud now & unusual for itself; Chronic=loud but normal for it; Stirring=rising vs own baseline">tag</th>
-      <th title="Hover a signal name for its curated interpretation">signal</th><th>region</th><th>trajectory (oldest→now)</th>
+      <th title="Hover a signal name for its curated interpretation">signal</th><th title="The entity the signal runs over — a region, or a territory for territory_* signals">entity</th><th>trajectory (oldest→now)</th>
       <th class="num" title="Intrinsic loudness V = Σ|step deltas|, raw metric units">loudness</th>
       <th class="num" title="Cross-sectional: percentile of V among all regions this month (metric-comparable)">vs peers</th>
       <th class="num" title="Robust z of current V vs this region's own past V (median+MAD). High = calm historically.">vs self</th>
@@ -2113,7 +2115,7 @@ async function runSaCompose() {
   if (sigs.length < 2) { out.innerHTML = '<p style="color:#cc3322;font-size:13px">Pick at least 2 signals.</p>'; return; }
   out.textContent = 'Computing…';
   let d;
-  try { d = await (await fetch(`/api/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${sigs.join(',')}`)).json(); }
+  try { d = await (await fetch(`/api/report/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${sigs.join(',')}`)).json(); }
   catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
   if (d.error) { out.innerHTML = `<div class="sig-error">${d.error}</div>`; return; }
   document.getElementById('sa-meta').textContent =
@@ -2141,7 +2143,7 @@ async function runSaSearch() {
   const out = document.getElementById('sa-results');
   out.textContent = 'Searching combinations…';
   let d;
-  try { d = await (await fetch(`/api/signal_analysis/search?brand=${encodeURIComponent(brand)}&k=3`)).json(); }
+  try { d = await (await fetch(`/api/report/signal_analysis/search?brand=${encodeURIComponent(brand)}&k=3`)).json(); }
   catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
   if (d.error) { out.innerHTML = `<div class="sig-error">${d.error}</div>`; return; }
   document.getElementById('sa-meta').textContent =
@@ -2165,13 +2167,13 @@ let insTerr = null;
 const findingsCache = {}, territoryCache = {};
 async function getTerritory(brand) {
   if (territoryCache[brand]) return territoryCache[brand];
-  try { const d = await (await fetch('/api/territory?brand=' + encodeURIComponent(brand))).json(); territoryCache[brand] = d; return d; }
+  try { const d = await (await fetch('/api/report/territory?brand=' + encodeURIComponent(brand))).json(); territoryCache[brand] = d; return d; }
   catch (e) { return null; }
 }
 let KN = null;
 async function getKnowledge() {
   if (KN) return KN;
-  try { KN = await (await fetch('/api/knowledge')).json(); }
+  try { KN = await (await fetch('/api/report/knowledge')).json(); }
   catch (e) { KN = { signals: {}, finding_recipes: {}, insight_framings: {} }; }
   return KN;
 }
@@ -2219,16 +2221,16 @@ function lensHtml() {
 
 async function ensureMeta(errTarget) {
   if (META) return true;
-  try { META = await (await fetch('/api/meta')).json(); return true; }
+  try { META = await (await fetch('/api/report/meta')).json(); return true; }
   catch (e) {
     document.getElementById(errTarget).innerHTML =
-      '<div class="sig-error">No API server. Run <code>python3 server.py</code> and reload.</div>';
+      '<div class="sig-error">No API server. Run <code>npm run dev</code> in studio/ and reload.</div>';
     return false;
   }
 }
 async function getFindings(brand) {
   if (findingsCache[brand]) return findingsCache[brand];
-  try { const d = await (await fetch('/api/findings?brand=' + encodeURIComponent(brand))).json(); findingsCache[brand] = d; return d; }
+  try { const d = await (await fetch('/api/report/findings?brand=' + encodeURIComponent(brand))).json(); findingsCache[brand] = d; return d; }
   catch (e) { return { error: 'Request failed.' }; }
 }
 function fillBrands(sel) {
@@ -2265,7 +2267,7 @@ let fndHistCache = {};   // brand|region -> history array, cached per session
 async function loadRegionHistory(brand, region) {
   const key = brand + '|' + region;
   if (!fndHistCache[key]) {
-    const d = await fetch(`/api/findings/history?brand=${encodeURIComponent(brand)}&region=${encodeURIComponent(region)}`).then(r=>r.json()).catch(()=>null);
+    const d = await fetch(`/api/report/findings/history?brand=${encodeURIComponent(brand)}&region=${encodeURIComponent(region)}`).then(r=>r.json()).catch(()=>null);
     fndHistCache[key] = (d && d.history) || [];
   }
   return fndHistCache[key];

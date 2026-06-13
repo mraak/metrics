@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { metricsDb, toolDb, parseFindingRow } from '@/lib/db'
+import { metricsDb } from '@/lib/db'
+import { readFindingDefById } from '@/lib/knowledge-store'
 import { classifyFindings } from '@/lib/finding-engine'
 import { renderInsight } from '@/lib/insight-engine'
 import type { InsightFraming } from '@/lib/types'
@@ -16,16 +17,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       max_rows?: number
     }
 
-    const db = toolDb()
     const mdb = metricsDb()
 
     const asof = body.asof ?? (mdb.prepare('SELECT MAX(year_month) AS latest FROM region_metrics').get() as { latest: string }).latest
 
-    const defRow = db.prepare('SELECT * FROM finding_definitions WHERE id = ?').get(body.finding_def_id)
-    if (!defRow) {
+    const def = readFindingDefById(body.finding_def_id)
+    if (!def) {
       return NextResponse.json({ error: `Finding definition not found: ${body.finding_def_id}` }, { status: 404 })
     }
-    const def = parseFindingRow(defRow as Parameters<typeof parseFindingRow>[0])
 
     const segmentValues: Record<string, string | number> = body.brand ? { brand_name: body.brand } : {}
     const allRows = classifyFindings(def, segmentValues, asof)

@@ -23,7 +23,8 @@ export interface SignalDefinition {
   lags: number[]              // e.g. [0,1,2,3] or [0,1,3,6,12]
   delta_lags: number[]        // subset of lags to emit as step-deltas
   direction: 'higher_is_better' | 'lower_is_better'
-  strength_kind: 'position' | 'growth'
+  // keys into knowledge signal_strength.loudness_bands_pp — per metric kind AND grain
+  strength_kind: 'position' | 'growth' | 'territory_position' | 'territory_growth'
   loud_threshold: number      // V threshold for the "loud" severity bonus
 
   created_at: string

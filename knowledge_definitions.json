@@ -1,7 +1,7 @@
 {
   "_about": "Knowledge Definitions — the curated library of DEFINITIONS, not values. Stores the 'how' for Tiers 3-5 (Signal, Finding, Insight). Every entry re-derives fresh values from region_metrics whenever the data refreshes; nothing here is a stored result. Analyst-authored, version-controlled, auditable like code. See ANALYSIS_FRAMEWORK.md.",
-  "version": "1.0.0",
-  "updated": "2026-06-03",
+  "version": "1.1.0",
+  "updated": "2026-06-11",
   "enums": {
     "period_type": [
       "Month",
@@ -33,7 +33,7 @@
     ]
   },
   "signal_templates": {
-    "_about": "A Signal = a single comparative metric watched over time. Each template binds the four parameters {metric, period_type, lags, readout} to a name + interpretation. Values are produced on demand by a LAG/OVER window query over region_metrics; never precomputed here. 'lags' are calendar-month offsets (0 = now). 'readout': series = the lagged values; delta = value[0] - value[delta_lag]; slope = linear trend across lags.",
+    "_about": "A Signal = a single comparative metric watched over time. Each template binds the four parameters {metric, period_type, lags, readout} to a name + interpretation. Values are produced on demand by a LAG/OVER window query; never precomputed here. 'lags' are calendar-month offsets (0 = now). 'readout': series = the lagged values; delta = value[0] - value[delta_lag]; slope = linear trend across lags. LEVELS: a template defaults to the region grain (region_metrics / region_name); declare source_table + entity_dimension to run the same machinery at another grain — territory_* templates read territory_metrics partitioned by territory_name. Both grains share metric names and the volume-weighted national references, so deviations are mutually consistent across levels.",
     "mshare_deviation_mat": {
       "metric": "mshare_deviation",
       "period_type": "MAT",
@@ -173,20 +173,248 @@
       "strength_kind": "growth",
       "materiality_from": "rank_sales_eur",
       "interpretation": "RollQ counterpart to growth_deviation_mat: region YoY sales growth minus the brand's volume-weighted national YoY growth, on a rolling-quarter base rather than 12-month. More responsive to recent swings than the MAT version. NOTE: consecutive RollQ months overlap (each shares 2 of its 3 months with the next), so the step series is an autocorrelated/smoothed path, not independent observations."
+    },
+    "territory_mshare_deviation_mat": {
+      "metric": "mshare_deviation",
+      "period_type": "MAT",
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "readout": "delta",
+      "delta_lags": [
+        1,
+        3
+      ],
+      "direction": "higher_is_better",
+      "strength_kind": "territory_position",
+      "materiality_from": "rank_sales_eur",
+      "source_table": "territory_metrics",
+      "entity_dimension": "territory_name",
+      "interpretation": "Territory-level relative market-share position: territory MS (summed own / summed franchise market across its regions — share is NOT additive, so it re-derives from territory totals) minus the volume-weighted national MS, watched at -1M and -3M on a 12-month base. A territory follows the franchise model — one row per product (brand) it carries — so this signal reads per territory x product. NOTE: aggregation smooths region noise, so territory trajectories are quieter than region ones; a 'loud' territory move means something broad is happening across its regions, not one outlier."
+    },
+    "territory_growth_deviation_mat": {
+      "metric": "growth_deviation",
+      "period_type": "MAT",
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "readout": "delta",
+      "delta_lags": [
+        1,
+        3
+      ],
+      "direction": "higher_is_better",
+      "strength_kind": "territory_growth",
+      "materiality_from": "rank_sales_eur",
+      "source_table": "territory_metrics",
+      "entity_dimension": "territory_name",
+      "interpretation": "Territory YoY sales growth minus the brand's volume-weighted national YoY growth, on a 12-month base — is the territory out-growing or under-growing the brand, and is that gap widening? Peer-relative growth-momentum companion to territory_mshare_deviation_mat; together they place a territory in the same share x growth quadrant used for regions, one level up. The national reference is identical at both grains, so a territory's deviation is the volume-weighted resultant of its regions' deviations."
+    },
+    "territory_growth_py_sales_mat": {
+      "metric": "growth_py_sales",
+      "period_type": "MAT",
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "readout": "slope",
+      "direction": "higher_is_better",
+      "strength_kind": "territory_growth",
+      "materiality_from": "rank_sales_eur",
+      "source_table": "territory_metrics",
+      "entity_dimension": "territory_name",
+      "interpretation": "Trajectory of the territory's own YoY sales growth on a 12-month base — the absolute-momentum read behind the deviation signals ('the territory grows +4% and the gap to national is widening' vs 'everything shrinks, the territory just shrinks slower'). Standardized 4-point monthly basis [0,1,2,3] like every other signal."
+    },
+    "territory_growth_vs_fcst_eur_rollq": {
+      "metric": "growth_vs_fcst_eur",
+      "period_type": "RollQ",
+      "lags": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "readout": "delta",
+      "delta_lag": 3,
+      "direction": "higher_is_better",
+      "strength_kind": "territory_growth",
+      "materiality_from": "rank_sales_eur",
+      "source_table": "territory_metrics",
+      "entity_dimension": "territory_name",
+      "interpretation": "Is the territory pulling toward or away from the national forecast over the last quarter? Territory growth_py minus national FCST growth (the forecast is national-only; the territory-level question is plan convergence, not a territory plan). This is the signal the Sales Manager persona leads with: the territory verdict ('beating plan / behind plan') that frames the per-region exceptions beneath it. NOTE: consecutive RollQ months overlap, so the step series is a smoothed path."
     }
   },
   "signal_roles": {
-    "_about": "Named references from code and UI to signal_templates, so the chosen signal id is resolved from config at runtime instead of hard-coded in source. Each value MUST be a key in signal_templates (validated by knowledge.py). Add a role here rather than embedding a template id in a .py/.html/.ts file.",
+    "_about": "Named references from code and UI to signal_templates, so the chosen signal id is resolved from config at runtime instead of hard-coded in source. Each value MUST be a key in signal_templates (validated by knowledge.ts / npm run validate). Add a role here rather than embedding a template id in a .ts/.html file.",
     "ui_default": "mshare_deviation_mat",
     "region_position": "mshare_deviation_mat",
-    "region_growth": "growth_deviation_mat"
+    "region_growth": "growth_deviation_mat",
+    "territory_position": "territory_mshare_deviation_mat",
+    "territory_growth": "territory_growth_deviation_mat",
+    "territory_plan": "territory_growth_vs_fcst_eur_rollq"
+  },
+  "finding_definitions": {
+    "_about": "Executable finding definitions for the Finding Composer / finding-engine: axes (each referencing a signal_templates key), classification rules over axis sides, and severity config. The descriptive finding_recipes above document the archetypes; these entries are the machine-readable configs the engine runs. Keyed by name.",
+    "share_growth_quadrant": {
+      "id": "fnd_share_growth",
+      "label": "Share × Growth Quadrant",
+      "axes": [
+        {
+          "name": "share",
+          "signal_id": "mshare_deviation_mat",
+          "good_direction": "positive",
+          "threshold": 0
+        },
+        {
+          "name": "growth",
+          "signal_id": "growth_deviation_mat",
+          "good_direction": "positive",
+          "threshold": 0
+        }
+      ],
+      "classifications": [
+        {
+          "key": "losing_both",
+          "label": "Losing on both",
+          "conditions": [
+            {
+              "axis": "share",
+              "side": "bad"
+            },
+            {
+              "axis": "growth",
+              "side": "bad"
+            }
+          ]
+        },
+        {
+          "key": "slipping",
+          "label": "Slipping",
+          "conditions": [
+            {
+              "axis": "share",
+              "side": "good"
+            },
+            {
+              "axis": "growth",
+              "side": "bad"
+            }
+          ]
+        },
+        {
+          "key": "catching_up",
+          "label": "Catching up",
+          "conditions": [
+            {
+              "axis": "share",
+              "side": "bad"
+            },
+            {
+              "axis": "growth",
+              "side": "good"
+            }
+          ]
+        },
+        {
+          "key": "star",
+          "label": "Star",
+          "conditions": [
+            {
+              "axis": "share",
+              "side": "good"
+            },
+            {
+              "axis": "growth",
+              "side": "good"
+            }
+          ]
+        }
+      ],
+      "severity": {
+        "deterioration_delta": 0.3,
+        "bands": {
+          "critical": 5,
+          "high": 3,
+          "moderate": 2
+        }
+      },
+      "created_at": "2026-06-05 19:19:07",
+      "updated_at": "2026-06-11 15:29:09"
+    }
+  },
+  "insight_templates": {
+    "_about": "Executable per-(persona, finding_key) insight templates for the Insight Framer / insight-engine: mode template renders {{vars}} from a finding row; mode llm holds the prompts. The descriptive insight_framings above document each persona; these are the machine-readable render configs. Keyed by persona.finding_key.",
+    "sales_manager.catching_up": {
+      "id": "frm_sm_catching_up",
+      "persona": "sales_manager",
+      "finding_key": "catching_up",
+      "mode": "template",
+      "template": "{{region}} (rank {{rank}}) — catching up: below on share ({{share_now}}pp) but out-growing peers (+{{growth_now}}pp, ρ={{growth_coherence}}). Positive momentum.",
+      "llm_system": "",
+      "llm_user": "",
+      "model": "claude-haiku-4-5",
+      "surface_conditions": [],
+      "suppress_conditions": [],
+      "created_at": "2026-06-05 19:19:07",
+      "updated_at": "2026-06-05 19:19:07"
+    },
+    "sales_manager.losing_both": {
+      "id": "frm_sm_losing_both",
+      "persona": "sales_manager",
+      "finding_key": "losing_both",
+      "mode": "template",
+      "template": "{{region}} (rank {{rank}}) — losing on both: {{share_now}}pp below peers on share (was {{share_oldest}}pp 3m ago, ρ={{share_coherence}} {{share_shape}}), and under-growing by {{growth_now}}pp (was {{growth_oldest}}pp). Severity: {{severity_band}} ({{severity_score}}/6).",
+      "llm_system": "",
+      "llm_user": "",
+      "model": "claude-haiku-4-5",
+      "surface_conditions": [],
+      "suppress_conditions": [],
+      "created_at": "2026-06-05 19:19:07",
+      "updated_at": "2026-06-05 19:19:07"
+    },
+    "sales_manager.slipping": {
+      "id": "frm_sm_slipping",
+      "persona": "sales_manager",
+      "finding_key": "slipping",
+      "mode": "template",
+      "template": "{{region}} (rank {{rank}}) — slipping: ahead on share (+{{share_now}}pp) but under-growing ({{growth_now}}pp, {{growth_shape}} ρ={{growth_coherence}}). Worth watching.",
+      "llm_system": "",
+      "llm_user": "",
+      "model": "claude-haiku-4-5",
+      "surface_conditions": [],
+      "suppress_conditions": [],
+      "created_at": "2026-06-05 19:19:07",
+      "updated_at": "2026-06-05 19:19:07"
+    },
+    "sales_manager.star": {
+      "id": "frm_sm_star",
+      "persona": "sales_manager",
+      "finding_key": "star",
+      "mode": "template",
+      "template": "{{region}} (rank {{rank}}) — star: +{{share_now}}pp on share, +{{growth_now}}pp on growth. Both trending well (share ρ={{share_coherence}}, growth ρ={{growth_coherence}}).",
+      "llm_system": "",
+      "llm_user": "",
+      "model": "claude-haiku-4-5",
+      "surface_conditions": [],
+      "suppress_conditions": [],
+      "created_at": "2026-06-05 19:19:07",
+      "updated_at": "2026-06-05 19:19:07"
+    }
   },
   "finding_recipes": {
     "_about": "A Finding = open-ended composition of lower facts (usually several signals). Each recipe is method-agnostic: 'rule' here is a human-readable predicate an engine OR an LLM can evaluate. 'requires_signals' lists the signal templates that feed it; 'gap' refers to value vs brand peer-median, 'momentum' to the signal's direction (WIDENING/STABLE/SHRINKING for growth; IMPROVING/STABLE/DECLINING for position). Thresholds come from relevance.magnitude.",
     "star": {
       "label": "Star",
       "method": "rule",
-      "impl": "findings.py",
+      "impl": "findings-report.ts",
       "requires_signals": [
         "mshare_deviation_mat",
         "growth_deviation_mat"
@@ -280,11 +508,11 @@
       "description": "Volatility itself is the finding: high loudness, ~zero coherence (e.g. -10 then +10). Reading a trend into it would be wrong — there is no net direction.",
       "default_action": "Check data quality, demand spikiness, or stocking/ordering noise before treating any single point as a trend."
     },
-    "_share_x_growth": "Region findings on the SHARE × GROWTH quadrant: position = mshare_deviation, momentum = growth_deviation (both vs volume-weighted national). Quadrant by current level; severity = ms_sev + growth_sev (each 0-3). No FCST at region level. Impl: findings.py.",
+    "_share_x_growth": "Region findings on the SHARE × GROWTH quadrant: position = mshare_deviation, momentum = growth_deviation (both vs volume-weighted national). Quadrant by current level; severity = ms_sev + growth_sev (each 0-3). No FCST at region level. Impl: findings-report.ts.",
     "losing_both": {
       "label": "Losing on both",
       "method": "rule",
-      "impl": "findings.py",
+      "impl": "findings-report.ts",
       "requires_signals": [
         "mshare_deviation_mat",
         "growth_deviation_mat"
@@ -297,7 +525,7 @@
     "slipping": {
       "label": "Slipping",
       "method": "rule",
-      "impl": "findings.py",
+      "impl": "findings-report.ts",
       "requires_signals": [
         "mshare_deviation_mat",
         "growth_deviation_mat"
@@ -310,7 +538,7 @@
     "catching_up": {
       "label": "Catching up",
       "method": "rule",
-      "impl": "findings.py",
+      "impl": "findings-report.ts",
       "requires_signals": [
         "mshare_deviation_mat",
         "growth_deviation_mat"
@@ -366,7 +594,7 @@
     "coherence": "rho = D / V, in [-1, +1]. TREND vs OSCILLATION. |rho| -> 1 = monotone clean move; rho -> 0 = loud oscillation that nets to nothing (e.g. -10 then +10: V=20, D=0, rho=0). This is the signed Kaufman Efficiency Ratio. It is why V and D must both be kept: V catches the oscillation D hides, sign(D) gives the direction V lacks.",
     "signed_strength": "D * |rho| — convenience scalar: net displacement discounted by incoherence. Equals net for a perfectly clean trend, -> 0 for a pure oscillation. Use for sorting; never as a replacement for the three measures.",
     "loudness_bands_pp": {
-      "_note": "Buckets for V (and for |net|). pp thresholds; choose ladder by metric kind.",
+      "_note": "Buckets for V (and for |net|). pp thresholds; choose ladder by metric kind (the template's strength_kind). Territory ladders are ~3-5x lower than region ones because aggregating regions smooths the path — a territory's V distribution sits far below a region's (observed p50 ratio ~0.3 on position, ~0.5 on growth). First-pass calibration from the seeded data; retune on real data.",
       "position": {
         "very_loud": 2.0,
         "loud": 1.0,
@@ -376,6 +604,16 @@
         "very_loud": 15,
         "loud": 10,
         "moderate": 5
+      },
+      "territory_position": {
+        "very_loud": 0.6,
+        "loud": 0.3,
+        "moderate": 0.15
+      },
+      "territory_growth": {
+        "very_loud": 4,
+        "loud": 2.5,
+        "moderate": 1.5
       }
     },
     "coherence_bands": {

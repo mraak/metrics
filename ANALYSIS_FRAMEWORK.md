@@ -9,48 +9,41 @@ Complete guide to pharmaceutical regional sales analysis: from raw data through 
 ### 1. Generate the Database & Metrics
 
 ```bash
-cd /Users/alenbalja/projects/SQL-Metrics
-python3 compute_metrics.py
+python3 compute_metrics.py    # the offline ETL — the only Python in the app's lifecycle
 ```
 
 **What it does:**
-- Creates `metrics.db` (SQLite database)
-- Populates dimension tables: brands, skus, regions, competitors
-- Populates fact tables: sales, forecast (synthesized data)
-- Computes `region_metrics` table with 136,200 rows (25 months × 4 period types × 6 brands × 227 regions)
-- Calculates all Tier 1 metrics: growth, market share deviation, NTILE ranks, etc.
+- Computes `region_metrics` (region grain) AND `territory_metrics` (territory grain) with one pipeline
+- Calculates all Tier 1-2 metrics: growth, market share deviation, NTILE ranks, etc.
 
 **Output:** `metrics.db` ready for analysis
 
-### 2. Validate the Knowledge Definitions
+### 2. Run the App (ONE app — the merged Studio, Next.js on :3100)
 
 ```bash
-python3 knowledge.py                                  # summary + validation
-python3 knowledge.py --signal mshare_deviation_mat   # compile a signal to SQL
+cd studio && npm run dev
+open http://localhost:3100/            # Studio — analyst editors (Data / Signals / Findings / Insights)
+open http://localhost:3100/schema.html # Report — Schema / Signals / Signal Analysis / Findings / Insights
 ```
 
-**What it does:**
-- Loads `knowledge_definitions.json` (signal templates, finding recipes, insight framings, relevance/strength config)
-- Validates it against the live `region_metrics` schema and compiles any signal template to its `LAG`/`OVER` SQL
+The former Python server (`server.py` + friends) is merged into the Studio: its
+endpoints live on as `/api/report/*` Next routes (1:1 TypeScript ports,
+parity-verified against the originals at cutover), and `schema.html` is served
+unchanged as a static page from `studio/public/`.
 
-### 3. Run the App
+### 3. Validate the Knowledge Definitions
 
 ```bash
-python3 server.py            # serves schema.html + live JSON API on :8765
-open http://localhost:8765/
+cd studio && npm run validate                                   # summary + schema-grounded validation
+cd studio && npm run validate -- --signal mshare_deviation_mat  # compile a signal to SQL
 ```
-
-**`schema.html` is the single-file web app**, served by `server.py` (stdlib only). Tabs:
-- **Schema** — 3-column diagram, clickable metric definitions, framework panel, light/dark
-- **Signals** — live per-region signal readout + strength (magnitude/net/coherence) + relevance, computed on demand by the API (`/api/signals`) from `metrics.db` via the Knowledge Definitions
-- More reporting tabs (Findings / Insights) build on the same pattern
 
 ---
 
 ## What Is Where: File Structure
 
 ```
-/Users/alenbalja/projects/SQL-Metrics/
+/Users/alenbalja/projects/SQL-Metrics2/
 ├── README.md
 │   └─ Quick overview, links to full documentation
 │
@@ -64,28 +57,35 @@ open http://localhost:8765/
 │   ├── competitors (16 rows) — Competitor products
 │   ├── sales (110,291 rows) — Raw sales facts, own & competitors
 │   ├── forecast (186 rows) — National forecast baseline
-│   └── region_metrics (136,200 rows) — Computed metrics (Tier 1)
+│   ├── region_metrics — Computed metrics at the REGION grain (Tiers 1-2)
+│   └── territory_metrics — Same metric columns at the TERRITORY grain
+│       (regions summed; market share re-derived from summed own vs summed
+│        franchise totals — share is NOT additive)
 │
-├── Python Scripts:
-│   ├── compute_metrics.py
-│   │   └─ Generates region_metrics table + all Tier 1-2 metrics
-│   ├── knowledge.py
-│   │   └─ Loads/validates Knowledge Definitions; compiles signals to SQL
-│   └── server.py
-│       └─ Serves the app + live JSON API (/api/meta, /api/signals)
+├── Python (offline ETL only):
+│   ├── seed.py            — synthesizes raw sales/forecast facts
+│   └── compute_metrics.py — one pipeline, both grains → region_metrics + territory_metrics
 │
 ├── Knowledge Definitions:
 │   └── knowledge_definitions.json
-│       └─ Signal templates · finding recipes · insight framings · relevance (Tiers 3-5 "how")
+│       └─ ALL Tier 3-5 definitions: signal templates · finding definitions (executable)
+│          · insight templates (executable) · finding recipes · insight framings
+│          · strength/relevance config. Version-controlled; written by the Studio editors.
 │
-├── Web App:
-│   └── schema.html
-│       └─ Reporting surface — schema diagram + metrics + framework panel;
-│          reporting tabs (signals/findings/insights) being built on top
-│       (earlier standalone report attempts: branch archive/report-attempts)
-│
-└── Data Model Grain (region_metrics):
-    25 months × 4 period_types × 6 brands × 227 regions = 136,200 rows
+└── studio/ — THE app (Next.js, :3100; the former Python server is merged in)
+    ├── src/lib/
+    │   ├── knowledge.ts        — knowledge access + signal math (strength V/D/ρ, relevance,
+    │   │                         compiled LAG/OVER SQL); port of the retired knowledge.py
+    │   ├── report.ts           — /api/report endpoints (meta/signals/scatter/trails/knowledge)
+    │   ├── territory.ts        — territory-grain readout (port of territory.py)
+    │   ├── signal-analysis.ts  — cross-metric loudness + composites (port of signal_analysis.py)
+    │   ├── findings-report.ts  — share×growth quadrant pass + catalog (port of findings.py)
+    │   ├── signal-engine.ts / finding-engine.ts / insight-engine.ts — generic Studio engines
+    │   └── knowledge-store.ts  — read/write knowledge_definitions.json (surgical section splice)
+    ├── src/app/api/            — Studio CRUD routes + /api/report/* report routes
+    ├── public/schema.html      — the Report app (static page, same server)
+    ├── scripts/validate-knowledge.ts — `npm run validate`
+    └── studio.db               — findings catalog ONLY (append-only computed findings)
 ```
 
 ---
@@ -285,6 +285,18 @@ A Signal is fully described by four parameters:
 
 **The two axes are orthogonal:** `period_type` is the *window width* (MAT = 12-month, RollQ = 3-month), and `LAG(n)` is the *step back in time*. "mshare_deviation on RollQ −3Month" = `LAG(3)` within `period_type='RollQ'`. Because the series is monthly-grained, `n` is always counted in calendar-month rows regardless of period_type — that uniformity is what lets one template cover every signal.
 
+#### Levels: the same template at another grain
+
+A signal template defaults to the **region** grain (`region_metrics`, partitioned by `region_name`). Declaring `source_table` + `entity_dimension` runs the identical machinery at another grain — the `territory_*` templates read `territory_metrics` partitioned by `territory_name`. Nothing else changes: same metric names, same window query, same V/D/ρ strength, same relevance formula.
+
+A **territory follows the franchise model**: like a franchise (several brands), a territory looks at several products — `territory_metrics` keeps `brand_name` in the grain, so each territory carries one signal row per product. Aggregation rules:
+
+- **Sums add** (units, sales) — territory = Σ regions.
+- **Shares don't** — territory MS re-derives from summed own ÷ summed franchise totals inside the pipeline, never averaged.
+- **References are shared** — the volume-weighted national MS / national growth benchmarks are identical at both grains (summing either partition gives the same national totals), so a territory's deviation is exactly the volume-weighted resultant of its regions' deviations.
+- **Loudness needs its own ladder** — aggregating regions smooths the path, so territory V distributions sit ~3–5× below region ones (observed p50 ratio ≈0.3 on position, ≈0.5 on growth). `signal_strength.loudness_bands_pp` carries separate `territory_position` / `territory_growth` ladders, selected by the template's `strength_kind`. A "loud" territory move therefore means something *broad* is happening across its regions, not one outlier shouting.
+- **Levels never mix in a composite** — a region path and a territory path share no entities; the composite/search machinery groups by level.
+
 #### The Signal Template (the "magic method")
 
 A single parameterized window query generates any signal — the example the analyst runs for Option-1-style custom signals:
@@ -340,7 +352,7 @@ Keep them apart. Strength is computed from the trajectory; relevance multiplies 
 
 ### Signal Strength — three measures, never collapsed to one
 
-Computed over the **consecutive step-deltas** of the metric across the signal's window (values oldest → now). A single scalar cannot hold a trajectory, so we keep three measures (definitions in `knowledge_definitions.json → signal_strength`; computed by `knowledge.py → signal_strength()`):
+Computed over the **consecutive step-deltas** of the metric across the signal's window (values oldest → now). A single scalar cannot hold a trajectory, so we keep three measures (definitions in `knowledge_definitions.json → signal_strength`; computed by `knowledge.ts → signalStrength()`):
 
 | Measure | Formula | Question it answers |
 |---------|---------|---------------------|
@@ -380,7 +392,7 @@ The top region: below national average (−4.36pp) but the gap is **closing clea
 
 ### Relevance — does the loud signal matter?
 
-`relevance = materiality × loudness × horizon` (`knowledge.py → relevance_score()`). Coherence does **not** enter relevance — it selects *which archetype*, not *how much it matters*.
+`relevance = materiality × loudness × horizon` (`knowledge.ts → relevanceScore()`). Coherence does **not** enter relevance — it selects *which archetype*, not *how much it matters*.
 
 | Factor | Levels | Source |
 |--------|--------|--------|
@@ -457,7 +469,7 @@ The most important idea in the framework: **a Finding is a composite signal.** A
 - `mshare_deviation` — *position* (is the region ahead of or behind peers on share?)
 - `growth_deviation` — *momentum* (is it out-growing or under-growing the brand?)
 
-Plot a region by (share dev, growth dev) and it falls in one of four quadrants — **Losing-on-both / Slipping / Catching-up / Star** — with severity from how bad and how deteriorating each axis is. That's `findings.py` today; the Signals tab visualises it as a scatter + trajectory chart.
+Plot a region by (share dev, growth dev) and it falls in one of four quadrants — **Losing-on-both / Slipping / Catching-up / Star** — with severity from how bad and how deteriorating each axis is. That's `findings-report.ts` today; the Signals tab visualises it as a scatter + trajectory chart.
 
 **But 2-D is just the example. Generalise to N.** Stack any signals — share, growth, forecast-gap, price erosion, competitor pressure, … — into one vector. Strength generalises exactly:
 
@@ -669,9 +681,9 @@ The framework persists in exactly three places. Tiers 1–2 are the source of tr
 
 | Store | Holds | Tiers | Lifecycle |
 |-------|-------|-------|-----------|
-| **`region_metrics`** (SQL) | metrics + comparative metrics | 1–2 | refreshed each period by `compute_metrics.py` — the single source of truth |
-| **Knowledge Definitions** | *definitions*: signal templates, finding recipes, insight framings | the "how" for 3–5 | curated by analysts, version-controlled |
-| **Finding catalog** ("book of facts") | composed findings, each embedding a JSON snapshot of the signals + values that produced it | 4 | generated on demand or scheduled |
+| **`region_metrics` / `territory_metrics`** (SQL) | metrics + comparative metrics, one table per grain | 1–2 | refreshed each period by `compute_metrics.py` (one pipeline, both grains) — the single source of truth |
+| **Knowledge Definitions** | *definitions*: signal templates, executable finding/insight definitions, recipes, framings | the "how" for 3–5 | curated by analysts (via the Studio editors), version-controlled |
+| **Finding catalog** ("book of facts") | composed findings in `studio/studio.db` (`findings_catalog`), each embedding a JSON snapshot of the signals + values that produced it | 4 | generated on demand or scheduled |
 
 ### Do we collect Signals as JSON in a separate store, alongside Findings?
 
@@ -776,8 +788,8 @@ The **Knowledge Definitions** store is the curated library of **definitions, not
 
 It is a concrete, version-controlled artifact in the repo:
 
-- **`knowledge_definitions.json`** — the store itself (signal templates, finding recipes, insight framings, relevance weights).
-- **`knowledge.py`** — loads + validates it against the live `region_metrics` schema, and compiles any signal template to its `LAG`/`OVER` SQL. Run `python3 knowledge.py` for a summary + validation, or `python3 knowledge.py --signal <id>` to see the SQL a template produces.
+- **`knowledge_definitions.json`** — the store itself (signal templates, executable finding/insight definitions, finding recipes, insight framings, relevance weights).
+- **`studio/src/lib/knowledge.ts`** — loads + validates it against the live metrics schema, and compiles any signal template to its `LAG`/`OVER` SQL. Run `npm run validate` (in `studio/`) for a summary + validation, or `npm run validate -- --signal <id>` to see the SQL a template produces.
 
 ### Three Kinds of Entries
 

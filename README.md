@@ -14,35 +14,32 @@ Contains everything: how to run, file structure, complete data flow, all system 
 
 ## 🚀 Quick Start: Running the System
 
-### 1. Generate Database & Metrics
+### 1. Generate Database & Metrics (offline ETL — the only Python left)
 
 ```bash
-cd /Users/alenbalja/projects/SQL-Metrics
 python3 compute_metrics.py
 ```
 
-**Creates:** `metrics.db` with 136,200 computed metrics (25 months × 6 brands × 227 regions × 4 period types)
+**Creates:** `metrics.db` with `region_metrics` + `territory_metrics` (months × 6 brands × 4 period types at both grains)
 
-### 2. Validate the Knowledge Definitions
-
-```bash
-python3 knowledge.py
-```
-
-**Checks:** signal templates map to real columns, recipes reference defined signals; compiles signals to SQL.
-
-### 3. Run the App
+### 2. Run the App (one app: the Studio)
 
 ```bash
-python3 server.py            # serves the app + live JSON API on :8765
-open http://localhost:8765/
+cd studio && npm run dev     # everything on :3100
+open http://localhost:3100/            # Studio (editors: Data / Signals / Findings / Insights)
+open http://localhost:3100/schema.html # Report (Schema / Signals / Signal Analysis / Findings / Insights)
 ```
 
-**`schema.html` is the single-file web app**, served by `server.py` (stdlib, no deps). Tabs:
-- **Schema** — diagram, metrics reference, framework panel
-- **Signals** — live per-region signal + strength (magnitude/net/coherence) + relevance, computed on demand from `metrics.db` via the Knowledge Definitions
+### 3. Validate the Knowledge Definitions
 
-More reporting tabs (Findings, Insights) build on the same pattern.
+```bash
+cd studio && npm run validate                                   # schema-grounded validation
+cd studio && npm run validate -- --signal mshare_deviation_mat  # compile a signal to SQL
+```
+
+**One Next.js app serves both surfaces** (the former Python server is merged in):
+- **Studio** (`/`) — analyst editors: Data explorer, Signal Studio, Finding Composer, Insight Framer. Definitions read/write `knowledge_definitions.json`.
+- **Report** (`/schema.html`) — schema diagram, Signals, Signal Analysis, Findings, Insights (per-persona), backed by the `/api/report/*` routes (1:1 ports of the old Python endpoints, parity-verified).
 
 ---
 
@@ -59,19 +56,23 @@ metrics.db (SQLite Database)
 │   ├── sales (110,291 rows) — raw transactional data
 │   └── forecast (186 rows) — national baseline
 └── Computed Metrics
-    └── region_metrics (136,200 rows)
-        └─ Tiers 1-2: metrics + comparative metrics (growth, ranks, deviations)
+    ├── region_metrics    — Tiers 1-2 at the REGION grain
+    └── territory_metrics — same columns at the TERRITORY grain (share re-derived, not averaged)
 
-Python
-├── compute_metrics.py  → Generates region_metrics table
-├── knowledge.py        → Loads/validates Knowledge Definitions, compiles signals to SQL
-└── server.py           → Serves the app + live JSON API (/api/meta, /api/signals)
+Python (offline ETL only)
+├── seed.py             → Synthesizes the raw sales/forecast facts
+└── compute_metrics.py  → One pipeline, both grains → region_metrics + territory_metrics
 
-Knowledge Definitions
-└── knowledge_definitions.json → Signal templates · finding recipes · insight framings · relevance
+Knowledge Definitions (ALL Tier 3-5 definitions, version-controlled)
+└── knowledge_definitions.json → signal templates · finding definitions · insight templates
+                                 · finding recipes · insight framings · strength/relevance config
 
-Web App
-└── schema.html         → Single-file app (Schema + Signals tabs; more tabs WIP)
+App (studio/ — Next.js, port 3100)
+├── src/lib             → knowledge.ts (strength/relevance/SQL), report.ts, territory.ts,
+│                         signal-analysis.ts, findings-report.ts, engines, knowledge-store.ts
+├── src/app/api         → Studio CRUD + /api/report/* (the report endpoints)
+├── public/schema.html  → the Report app (static page on the same server)
+└── studio.db           → findings catalog only (append-only record of computed findings)
 
 Documentation
 └── ANALYSIS_FRAMEWORK.md → Complete system (811 lines)
@@ -194,7 +195,7 @@ WINDOW w AS (ORDER BY year_month);
 
 ### Signal strength (intrinsic) — three measures, never one scalar
 
-Computed over the consecutive **step-deltas** of the trajectory (`knowledge.py → signal_strength()`):
+Computed over the consecutive **step-deltas** of the trajectory (`knowledge.ts → signalStrength()`):
 
 | Measure | Formula | Question |
 |---------|---------|----------|
@@ -274,11 +275,11 @@ The Finding catalog is **append-only immutable history**: a Finding is never exp
 The curated library of **definitions, not values** — institutional memory of *what's worth looking at and how to read it*. A concrete artifact in the repo:
 
 - **`knowledge_definitions.json`** — the store (signal templates · finding recipes · insight framings · relevance weights)
-- **`knowledge.py`** — loads + validates it against the live schema and compiles signals to SQL
+- **`studio/src/lib/knowledge.ts`** — loads + validates it against the live schema and compiles signals to SQL (`npm run validate`)
 
 ```bash
-python3 knowledge.py                      # summary + validation
-python3 knowledge.py --signal mshare_deviation_mat   # show the LAG/OVER SQL it compiles to
+cd studio && npm run validate                                   # summary + validation
+cd studio && npm run validate -- --signal mshare_deviation_mat  # show the LAG/OVER SQL it compiles to
 ```
 
 Three kinds of entries:

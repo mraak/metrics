@@ -12,6 +12,7 @@ const navLinks = [
   { href: '/signals', label: 'Signals' },
   { href: '/findings', label: 'Findings' },
   { href: '/insights', label: 'Insights' },
+  { href: '/schema.html', label: 'Report' },   // the merged report app (static page + /api/report/*)
   { href: '/docs/signals.html', label: 'Docs' },
 ]
 
