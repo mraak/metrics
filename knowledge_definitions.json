@@ -562,7 +562,61 @@
       "phrasing_guide": "Frame as where to spend the rep's attention this month. Recovery -> 'rep on track to recover an important region, keep it on the plan'.",
       "territory_overview": "Lead each territory with an overall verdict from territory-level metrics (YoY growth, plan attainment): e.g. 'Bern looks healthy — growing YoY and beating plan — but N regions worth addressing.' A healthy territory can still hide troubled regions, so always pair the headline with the exceptions.",
       "reminders": "The manager can't recall last month's report, so mark each region's month-over-month status: ✓ improved since last month; ↻ flagged again (red now and last month); ‼ red 3 consecutive months (unresolved). Also list regions that recovered out of the report since last month.",
-      "show_rank": "Every region mentioned carries its sales rank (rank_sales_eur percentile) so the manager can weigh it."
+      "show_rank": "Every region mentioned carries its sales rank (rank_sales_eur percentile) so the manager can weigh it.",
+      "key_questions": {
+        "_about": "The questions the all-territories manager asks each cycle, mapped to the grain that answers each. The three grains (region in territory in national) do NOT compose as one stacked composite signal — their entities never overlap, and signal_analysis.composite refuses to mix levels. They compose HIERARCHICALLY: national = Σ territories = Σ regions, and a unit's mshare_deviation is already measured against the national line, so the cross-level read is built into the metric. Aggregation smooths (territory loudness bands sit ~3-5x below region), so the level at which a move first becomes loud reveals the scope of its cause. Never add scores across levels — a region's euros are recounted in its territory and again in national; the hierarchy is for attribution and scope, not additive scoring.",
+        "questions": [
+          {
+            "id": "on_plan_overall",
+            "q": "Are we on plan overall?",
+            "level": "national",
+            "reads": "national_metrics",
+            "how": "National headline: market-share trajectory + plan attainment (actual ÷ forecast). National has no peer, so the read is ABSOLUTE (on plan / growing), not a deviation quadrant — its deviations are 0 by construction."
+          },
+          {
+            "id": "which_territories",
+            "q": "Which territories need me this month?",
+            "level": "territory",
+            "reads": "territory_metrics via signal_roles.territory_position + territory_growth",
+            "how": "Territory share x growth quadrant (same losing_both/slipping/catching_up/star cells as regions, one level up), ranked by € size and severity. The territory verdict frames the per-region exceptions beneath it (territory_plan = vs-forecast headline)."
+          },
+          {
+            "id": "one_region_or_all",
+            "q": "Inside a flagged territory — one region or all of them?",
+            "level": "territory -> region",
+            "reads": "region_metrics filtered to the territory",
+            "how": "Drill to region findings within the flagged territory and apply the smoothing test: loud at region but quiet at territory => idiosyncratic / single account; broad-based across the territory's regions => a territory-wide cause. A healthy territory headline can still hide troubled regions, so always pair verdict with exceptions."
+          },
+          {
+            "id": "rep_or_market",
+            "q": "Is it the rep or the market?",
+            "level": "national x territory/region",
+            "reads": "national_metrics absolute trajectory  ×  unit mshare_deviation trajectory",
+            "how": "The market-vs-execution 2x2 — national share DIRECTION (is the brand's own line rising/falling?) crossed with the unit's DEVIATION direction (pulling toward/away from that line): (a) national↑ & deviation↓ = falling behind a winning brand => purest 'coach this rep'; (b) national↓ & deviation↑ = winning a sinking market => counter-cyclical, protect & learn; (c) national↑ & deviation↑ = catching a rising tide, doubly good; (d) national↓ & deviation↓ = double hit, escalate. Separates brand/market effects (escalate to marketing) from execution effects (coach the rep)."
+          },
+          {
+            "id": "better_or_worse",
+            "q": "Better or worse than last month, and what's still unresolved?",
+            "level": "all",
+            "reads": "findings_catalog month-over-month memory",
+            "how": "Per-unit status from the catalog: ✓ improved since last month, ↻ flagged again (red now and last month), ‼ red 3 consecutive months (unresolved -> escalate). Time is the fourth axis on top of the share×growth read; list units that recovered out of the report too."
+          },
+          {
+            "id": "where_to_spend_attention",
+            "q": "Where do I spend limited attention?",
+            "level": "all",
+            "reads": "relevance score",
+            "how": "Rank by relevance = materiality × loudness × horizon. Big territories with LOUD and COHERENT (|ρ| → 1, a clean trend not an oscillation) deterioration come first; a loud-but-directionless swing is noise, not a priority."
+          },
+          {
+            "id": "who_caused_national_move",
+            "q": "National share slipped — who caused it?",
+            "level": "national -> territory",
+            "reads": "national Δ decomposed into territory contributions",
+            "how": "Attribution down the tree: split the national share/sales change into each territory's contribution (territory Δ weighted by its size). The roll-up read in reverse — turns a national headline into the named territories (then regions) that moved it. Watch for cancellation: a quiet national move can hide territories pulling hard in opposite directions."
+          }
+        ]
+      }
     },
     "sales_rep": {
       "label": "Sales Rep",

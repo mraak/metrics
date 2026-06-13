@@ -117,13 +117,6 @@ export interface FindingRow {
   mat_rank: number
 }
 
-export interface MetaInfo {
-  brands: string[]
-  period_types: string[]
-  metrics: string[]           // available numeric columns in region_metrics
-  latest_month: string
-}
-
 // Distinct values for a segment_by column (used in preview UI)
 export interface SegmentValues {
   column: string

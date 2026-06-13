@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import type { InsightFraming, FindingDefinition, SignalDefinition, MetaInfo } from '@/lib/types'
+import type { InsightFraming, FindingDefinition, SignalDefinition } from '@/lib/types'
 import Tooltip from '@/components/Tooltip'
 
 interface Props {
@@ -69,7 +69,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
   const [selected, setSelected] = useState<string | null>(null)
   const [draft, setDraft] = useState<Partial<InsightFraming>>(emptyDraft())
   const [selectedFindingDefId, setSelectedFindingDefId] = useState<string>('')
-  const [meta, setMeta] = useState<MetaInfo | null>(null)
+  const [meta, setMeta] = useState<{ brands: string[] } | null>(null)
   const [brand, setBrand] = useState<string>('')
   const [preview, setPreview] = useState<PreviewResult | null>(null)
   const [previewError, setPreviewError] = useState<string | null>(null)
@@ -81,7 +81,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
   const [newSuppress, setNewSuppress] = useState('')
 
   useEffect(() => {
-    fetch('/api/meta').then(r => r.json()).then(({ data }: { data: MetaInfo }) => {
+    fetch('/api/report/meta').then(r => r.json()).then((data: { brands: string[] }) => {
       setMeta(data)
       if (!brand && data.brands.length > 0) setBrand(data.brands[0])
     })
@@ -207,33 +207,33 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-[#e2e8f0] flex flex-col shrink-0">
-        <div className="px-4 py-3 border-b border-[#e2e8f0] flex items-center justify-between">
+      <aside className="w-64 bg-white border-r border-[#e0e0e0] flex flex-col shrink-0">
+        <div className="px-4 py-3 border-b border-[#e0e0e0] flex items-center justify-between">
           <h2 className="font-semibold text-sm text-[#1a2030]">Framings</h2>
           <button
             onClick={newFraming}
-            className="text-xs bg-[#3b5bdb] text-white px-2 py-1 rounded hover:bg-blue-700 transition-colors"
+            className="text-xs bg-[#2266aa] text-white px-2 py-1 rounded hover:bg-[#1a5288] transition-colors"
           >
             + New
           </button>
         </div>
         <div className="overflow-y-auto flex-1">
           {framings.length === 0 && (
-            <p className="text-xs text-[#6b7280] px-4 py-3">No framings yet.</p>
+            <p className="text-xs text-[#888888] px-4 py-3">No framings yet.</p>
           )}
           {Object.entries(byPersona).map(([persona, pFramings]) => (
             <div key={persona}>
-              <div className="px-4 py-2 bg-[#f8fafc] text-xs font-semibold text-[#6b7280] uppercase tracking-wide border-b border-[#e2e8f0]">
+              <div className="px-4 py-2 bg-[#f5f7fa] text-xs font-semibold text-[#888888] uppercase tracking-wide border-b border-[#e0e0e0]">
                 {persona}
               </div>
               {pFramings.map(f => (
                 <button
                   key={f.id}
                   onClick={() => selectFraming(f)}
-                  className={`w-full text-left px-4 py-2.5 border-b border-[#e2e8f0] hover:bg-[#f4f6f9] transition-colors ${selected === f.id ? 'bg-blue-50 border-l-2 border-l-[#3b5bdb]' : ''}`}
+                  className={`w-full text-left px-4 py-2.5 border-b border-[#e0e0e0] hover:bg-[#f5f7fa] transition-colors ${selected === f.id ? 'bg-blue-50 border-l-2 border-l-[#2266aa]' : ''}`}
                 >
                   <div className="font-medium text-xs text-[#1a2030] truncate">{f.finding_key}</div>
-                  <span className={`text-xs px-1.5 py-0.5 rounded ${f.mode === 'template' ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700'}`}>
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${f.mode === 'template' ? 'bg-blue-100 text-[#2266aa]' : 'bg-purple-100 text-purple-700'}`}>
                     {f.mode}
                   </span>
                 </button>
@@ -247,10 +247,10 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6 space-y-6">
           {/* Editor card */}
-          <div className="bg-white rounded-lg border border-[#e2e8f0] shadow-sm">
-            <div className="px-6 py-4 border-b border-[#e2e8f0]">
+          <div className="bg-white rounded-lg border border-[#e0e0e0] shadow-sm">
+            <div className="px-6 py-4 border-b border-[#e0e0e0]">
               <h2 className="font-semibold text-[#1a2030]">{selected ? 'Edit Framing' : 'New Framing'}</h2>
-              <p className="text-xs text-[#6b7280] mt-1">
+              <p className="text-xs text-[#888888] mt-1">
                 An Insight Framing turns a structured Finding into human-readable text for a specific persona.
                 Use {'{{'+'variable}}'} placeholders — they are substituted with live finding data at render time.
                 Same template + same data = identical output every time.
@@ -260,18 +260,18 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               {/* Persona + Finding key */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Persona *<Tooltip text="Who this insight is for. Common values: sales_manager, sales_rep, ceo. Free text — use whatever your system uses. Each persona gets different framings per finding key." /></label>
+                  <label className="block text-xs font-medium text-[#888888] mb-1">Persona *<Tooltip text="Who this insight is for. Common values: sales_manager, sales_rep, ceo. Free text — use whatever your system uses. Each persona gets different framings per finding key." /></label>
                   <input
                     type="text"
                     value={draft.persona ?? ''}
                     onChange={e => setDraft(d => ({ ...d, persona: e.target.value }))}
                     placeholder="e.g. sales_manager"
-                    className={`w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b5bdb] ${errors.persona ? 'border-[#e03131]' : 'border-[#e2e8f0]'}`}
+                    className={`w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2266aa] ${errors.persona ? 'border-[#e03131]' : 'border-[#e0e0e0]'}`}
                   />
                   {errors.persona && <p className="text-xs text-[#e03131] mt-0.5">{errors.persona}</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Finding Key *<Tooltip text="Which finding classification this framing applies to. Must match a key in a Finding Definition (e.g. 'losing_both', 'star'). One framing per persona × finding key pair." /></label>
+                  <label className="block text-xs font-medium text-[#888888] mb-1">Finding Key *<Tooltip text="Which finding classification this framing applies to. Must match a key in a Finding Definition (e.g. 'losing_both', 'star'). One framing per persona × finding key pair." /></label>
                   <select
                     value={draft.finding_key ?? ''}
                     onChange={e => {
@@ -281,7 +281,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                       const match = findings.find(f => f.classifications.some(c => c.key === key))
                       if (match) setSelectedFindingDefId(match.id)
                     }}
-                    className={`w-full border rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3b5bdb] ${errors.finding_key ? 'border-[#e03131]' : 'border-[#e2e8f0]'}`}
+                    className={`w-full border rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#2266aa] ${errors.finding_key ? 'border-[#e03131]' : 'border-[#e0e0e0]'}`}
                   >
                     <option value="">Select finding key…</option>
                     {allFindingKeys.map(fk => (
@@ -296,7 +296,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
 
               {/* Mode toggle */}
               <div>
-                <label className="block text-xs font-medium text-[#6b7280] mb-2">Mode</label>
+                <label className="block text-xs font-medium text-[#888888] mb-2">Mode</label>
                 {/* Mode-specific tooltip shown below buttons via inline approach */}
                 <div className="flex gap-2 items-center">
                   {(['template', 'llm'] as const).map(m => (
@@ -305,8 +305,8 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                       onClick={() => setDraft(d => ({ ...d, mode: m }))}
                       className={`px-4 py-1.5 rounded text-sm font-medium border transition-colors ${
                         mode === m
-                          ? 'bg-[#3b5bdb] text-white border-[#3b5bdb]'
-                          : 'bg-white text-[#6b7280] border-[#e2e8f0] hover:border-[#3b5bdb]'
+                          ? 'bg-[#2266aa] text-white border-[#2266aa]'
+                          : 'bg-white text-[#888888] border-[#e0e0e0] hover:border-[#2266aa]'
                       }`}
                     >
                       {m === 'template' ? 'Template' : 'LLM'}
@@ -319,12 +319,12 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               {/* Template editor */}
               {mode === 'template' && (
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Template<Tooltip text="Write the insight text with {{variable}} placeholders. Example: '{{region}} (rank {{rank}}) is losing on both axes — share {{share_now}}pp vs peers, growth {{growth_now}}pp vs national.'" /></label>
+                  <label className="block text-xs font-medium text-[#888888] mb-1">Template<Tooltip text="Write the insight text with {{variable}} placeholders. Example: '{{region}} (rank {{rank}}) is losing on both axes — share {{share_now}}pp vs peers, growth {{growth_now}}pp vs national.'" /></label>
                   <textarea
                     value={draft.template ?? ''}
                     onChange={e => setDraft(d => ({ ...d, template: e.target.value }))}
                     rows={5}
-                    className="w-full border border-[#e2e8f0] rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#3b5bdb] resize-y"
+                    className="w-full border border-[#e0e0e0] rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#2266aa] resize-y"
                     placeholder="Use {{region}}, {{severity_band}}, {{share_now}}, etc."
                   />
                 </div>
@@ -334,31 +334,31 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               {mode === 'llm' && (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-[#6b7280] mb-1">Model</label>
+                    <label className="block text-xs font-medium text-[#888888] mb-1">Model</label>
                     <input
                       type="text"
                       value={draft.model ?? 'claude-haiku-4-5'}
                       onChange={e => setDraft(d => ({ ...d, model: e.target.value }))}
-                      className="w-64 border border-[#e2e8f0] rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b5bdb]"
+                      className="w-64 border border-[#e0e0e0] rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#2266aa]"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#6b7280] mb-1">System Prompt</label>
+                    <label className="block text-xs font-medium text-[#888888] mb-1">System Prompt</label>
                     <textarea
                       value={draft.llm_system ?? ''}
                       onChange={e => setDraft(d => ({ ...d, llm_system: e.target.value }))}
                       rows={4}
-                      className="w-full border border-[#e2e8f0] rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#3b5bdb] resize-y"
+                      className="w-full border border-[#e0e0e0] rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#2266aa] resize-y"
                       placeholder="You are a {{persona}} analyst. {{region}} has severity {{severity_band}}…"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-[#6b7280] mb-1">User Message</label>
+                    <label className="block text-xs font-medium text-[#888888] mb-1">User Message</label>
                     <textarea
                       value={draft.llm_user ?? ''}
                       onChange={e => setDraft(d => ({ ...d, llm_user: e.target.value }))}
                       rows={4}
-                      className="w-full border border-[#e2e8f0] rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#3b5bdb] resize-y"
+                      className="w-full border border-[#e0e0e0] rounded px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#2266aa] resize-y"
                       placeholder="Write a concise insight for {{region}} (rank {{rank}})…"
                     />
                   </div>
@@ -366,27 +366,27 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               )}
 
               {/* Variable reference panel */}
-              <div className="border border-[#e2e8f0] rounded">
+              <div className="border border-[#e0e0e0] rounded">
                 <button
                   onClick={() => setVarsOpen(o => !o)}
-                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-[#6b7280] hover:bg-[#f8fafc]"
+                  className="w-full flex items-center justify-between px-4 py-2.5 text-xs font-medium text-[#888888] hover:bg-[#f5f7fa]"
                 >
                   <span>Available variables<Tooltip text="All {{placeholders}} that can be used in your template or LLM prompt. Identity variables are always available. Per-axis variables depend on which finding definition you run against." /></span>
                   <span>{varsOpen ? '▲' : '▼'}</span>
                 </button>
                 {varsOpen && (
-                  <div className="px-4 pb-3 space-y-2 border-t border-[#e2e8f0]">
+                  <div className="px-4 pb-3 space-y-2 border-t border-[#e0e0e0]">
                     <div className="pt-2">
-                      <div className="text-xs font-medium text-[#6b7280] mb-1">Identity</div>
+                      <div className="text-xs font-medium text-[#888888] mb-1">Identity</div>
                       <div className="flex flex-wrap gap-1">
                         {['region', 'territory', 'rank', 'finding', 'finding_label', 'severity_band', 'severity_score', 'months_red'].map(v => (
-                          <code key={v} className="text-xs bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded font-mono">{`{{${v}}}`}</code>
+                          <code key={v} className="text-xs bg-blue-50 text-[#2266aa] px-1.5 py-0.5 rounded font-mono">{`{{${v}}}`}</code>
                         ))}
                       </div>
                     </div>
                     {axisNames.length > 0 && (
                       <div>
-                        <div className="text-xs font-medium text-[#6b7280] mb-1">Per axis ({axisNames.join(', ')})</div>
+                        <div className="text-xs font-medium text-[#888888] mb-1">Per axis ({axisNames.join(', ')})</div>
                         <div className="flex flex-wrap gap-1">
                           {axisNames.flatMap(axis =>
                             ['now', 'oldest', 'net', 'coherence', 'shape', 'magnitude'].map(suffix => (
@@ -403,11 +403,11 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               {/* Surface / suppress conditions */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Surface conditions<Tooltip text="Optional: only surface this insight when these conditions are true. Leave empty to always surface. Example: severity_band = critical" /></label>
+                  <label className="block text-xs font-medium text-[#888888] mb-1">Surface conditions<Tooltip text="Optional: only surface this insight when these conditions are true. Leave empty to always surface. Example: severity_band = critical" /></label>
                   <div className="space-y-1 mb-1">
                     {surfaceConditions.map((c, i) => (
                       <div key={i} className="flex items-center gap-1">
-                        <span className="text-xs flex-1 bg-[#f8fafc] px-2 py-1 rounded border border-[#e2e8f0]">{c}</span>
+                        <span className="text-xs flex-1 bg-[#f5f7fa] px-2 py-1 rounded border border-[#e0e0e0]">{c}</span>
                         <button
                           onClick={() => setDraft(d => ({ ...d, surface_conditions: surfaceConditions.filter((_, j) => j !== i) }))}
                           className="text-[#e03131] text-xs px-1"
@@ -427,7 +427,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                         }
                       }}
                       placeholder="Add condition…"
-                      className="flex-1 border border-[#e2e8f0] rounded px-2 py-1 text-xs"
+                      className="flex-1 border border-[#e0e0e0] rounded px-2 py-1 text-xs"
                     />
                     <button
                       onClick={() => {
@@ -436,16 +436,16 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                           setNewSurface('')
                         }
                       }}
-                      className="text-xs px-2 py-1 bg-[#3b5bdb] text-white rounded"
+                      className="text-xs px-2 py-1 bg-[#2266aa] text-white rounded"
                     >+</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Suppress conditions<Tooltip text="Optional: suppress this insight when these conditions are true. Example: mat_rank < 40 (suppress for small/immaterial regions)" /></label>
+                  <label className="block text-xs font-medium text-[#888888] mb-1">Suppress conditions<Tooltip text="Optional: suppress this insight when these conditions are true. Example: mat_rank < 40 (suppress for small/immaterial regions)" /></label>
                   <div className="space-y-1 mb-1">
                     {suppressConditions.map((c, i) => (
                       <div key={i} className="flex items-center gap-1">
-                        <span className="text-xs flex-1 bg-[#f8fafc] px-2 py-1 rounded border border-[#e2e8f0]">{c}</span>
+                        <span className="text-xs flex-1 bg-[#f5f7fa] px-2 py-1 rounded border border-[#e0e0e0]">{c}</span>
                         <button
                           onClick={() => setDraft(d => ({ ...d, suppress_conditions: suppressConditions.filter((_, j) => j !== i) }))}
                           className="text-[#e03131] text-xs px-1"
@@ -465,7 +465,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                         }
                       }}
                       placeholder="Add condition…"
-                      className="flex-1 border border-[#e2e8f0] rounded px-2 py-1 text-xs"
+                      className="flex-1 border border-[#e0e0e0] rounded px-2 py-1 text-xs"
                     />
                     <button
                       onClick={() => {
@@ -474,7 +474,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                           setNewSuppress('')
                         }
                       }}
-                      className="text-xs px-2 py-1 bg-[#3b5bdb] text-white rounded"
+                      className="text-xs px-2 py-1 bg-[#2266aa] text-white rounded"
                     >+</button>
                   </div>
                 </div>
@@ -483,11 +483,11 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
               {/* Finding def + brand for preview */}
               <div className="flex items-end gap-4 flex-wrap">
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Finding definition (for preview)<Tooltip text="Which finding definition to run when generating the preview. This determines which axes are available as {{variables}}." /></label>
+                  <label className="block text-xs font-medium text-[#888888] mb-1">Finding definition (for preview)<Tooltip text="Which finding definition to run when generating the preview. This determines which axes are available as {{variables}}." /></label>
                   <select
                     value={selectedFindingDefId}
                     onChange={e => setSelectedFindingDefId(e.target.value)}
-                    className={`border rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3b5bdb] ${errors.finding_def ? 'border-[#e03131]' : 'border-[#e2e8f0]'}`}
+                    className={`border rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#2266aa] ${errors.finding_def ? 'border-[#e03131]' : 'border-[#e0e0e0]'}`}
                   >
                     <option value="">Select finding def…</option>
                     {findings.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -495,11 +495,11 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                   {errors.finding_def && <p className="text-xs text-[#e03131] mt-0.5">{errors.finding_def}</p>}
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-[#6b7280] mb-1">Brand</label>
+                  <label className="block text-xs font-medium text-[#888888] mb-1">Brand</label>
                   <select
                     value={brand}
                     onChange={e => setBrand(e.target.value)}
-                    className={`border rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3b5bdb] ${errors.brand ? 'border-[#e03131]' : 'border-[#e2e8f0]'}`}
+                    className={`border rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#2266aa] ${errors.brand ? 'border-[#e03131]' : 'border-[#e0e0e0]'}`}
                   >
                     <option value="">Select brand…</option>
                     {(meta?.brands ?? []).map(b => <option key={b} value={b}>{b}</option>)}
@@ -509,7 +509,7 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
                 <button
                   onClick={runPreview}
                   disabled={previewing}
-                  className="px-4 py-2 bg-[#3b5bdb] text-white rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+                  className="px-4 py-2 bg-[#2266aa] text-white rounded text-sm font-medium hover:bg-[#1a5288] disabled:opacity-50"
                 >
                   {previewing ? 'Running…' : '▶ Preview'}
                 </button>
@@ -539,22 +539,22 @@ export default function InsightFramer({ initialFramings, initialFindings, initia
 
           {/* Preview results */}
           {preview && preview.rendered.length === 0 && (
-            <div className="bg-white rounded-lg border border-[#e2e8f0] p-6 text-sm text-[#6b7280]">
+            <div className="bg-white rounded-lg border border-[#e0e0e0] p-6 text-sm text-[#888888]">
               No regions found for finding key &ldquo;{draft.finding_key}&rdquo; with the current settings.
             </div>
           )}
 
           {preview && preview.rendered.length > 0 && (
-            <div className="bg-white rounded-lg border border-[#e2e8f0] shadow-sm">
-              <div className="px-6 py-4 border-b border-[#e2e8f0]">
+            <div className="bg-white rounded-lg border border-[#e0e0e0] shadow-sm">
+              <div className="px-6 py-4 border-b border-[#e0e0e0]">
                 <h3 className="font-semibold text-[#1a2030]">Preview — top {preview.rendered.length} rows for &quot;{draft.finding_key}&quot;</h3>
               </div>
-              <div className="divide-y divide-[#e2e8f0]">
+              <div className="divide-y divide-[#e0e0e0]">
                 {preview.rendered.map((r, i) => (
                   <div key={i} className="px-6 py-4">
                     <div className="flex items-center gap-2 mb-2">
                       <span className="font-semibold text-sm text-[#1a2030]">{r.region}</span>
-                      <span className="text-xs text-[#6b7280]">{r.territory}</span>
+                      <span className="text-xs text-[#888888]">{r.territory}</span>
                       <span className={`text-xs px-2 py-0.5 rounded font-medium ${bandColor(r.finding_key)}`}>
                         {r.finding_key}
                       </span>

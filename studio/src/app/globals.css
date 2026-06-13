@@ -3,18 +3,19 @@
 @tailwind utilities;
 
 :root {
-  --bg-page: #f4f6f9;
+  --bg-page: #f5f7fa;
   --bg-panel: #ffffff;
   --nav-bg: #1a2030;
   --text-primary: #1a2030;
-  --text-secondary: #6b7280;
-  --accent: #3b5bdb;
+  --text-secondary: #888888;
+  --accent: #2266aa;
   --danger: #e03131;
   --success: #2f9e44;
-  --border: #e2e8f0;
+  --border: #e0e0e0;
 }
 
 body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
   background-color: var(--bg-page);
   color: var(--text-primary);
 }

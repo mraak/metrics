@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>metrics.db — Schema Diagram</title>
+<title>Insights Studio</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -489,6 +489,33 @@ body.dark-theme .data-modal-header h2 { color: #d4d4d4; }
   padding: 0;
 }
 
+/* Live data browser: filter toolbar + pagination footer (folded in from the
+   old Studio DataExplorer). */
+.data-modal-toolbar {
+  flex-shrink: 0; display: flex; gap: 8px; flex-wrap: wrap;
+  padding: 10px 20px; border-bottom: 1px solid #e8e8e8; background: #fff;
+}
+.data-modal-toolbar[hidden] { display: none; }
+.data-modal-toolbar select {
+  font: inherit; font-size: 12px; padding: 4px 8px;
+  border: 1px solid #d0d4da; border-radius: 5px; background: #fff; color: #333;
+}
+.data-modal-footer {
+  flex-shrink: 0; display: flex; align-items: center; gap: 12px;
+  padding: 9px 20px; border-top: 1px solid #e8e8e8; background: #f8f9fa;
+  font-size: 12px; color: #888;
+}
+.data-modal-footer[hidden] { display: none; }
+.data-modal-footer button {
+  font: inherit; font-size: 12px; padding: 4px 11px;
+  border: 1px solid #d0d4da; border-radius: 5px; background: #fff; color: #333; cursor: pointer;
+}
+.data-modal-footer button:disabled { opacity: .4; cursor: default; }
+body.dark-theme .data-modal-toolbar { background: #0f1119; border-bottom-color: #1e2232; }
+body.dark-theme .data-modal-toolbar select,
+body.dark-theme .data-modal-footer button { background: #1a1f2e; border-color: #333; color: #ddd; }
+body.dark-theme .data-modal-footer { background: #0a0d12; border-top-color: #1e2232; }
+
 .data-table {
   width: 100%;
   border-collapse: collapse;
@@ -750,6 +777,10 @@ body.dark-theme .tab.active { color: #6ab4d8; border-bottom-color: #6ab4d8; }
 .tab-panel { display: none; flex: 1; min-width: 0; min-height: 0; }
 .tab-panel.active { display: flex; }
 
+/* ── Embed mode: mounted as a single panel inside the Insights Studio shell.
+      The outer React app supplies the header + tab navigation, so hide ours. ── */
+body.embed .header, body.embed .tabs { display: none; }
+
 /* ── Signals tab ── */
 .signals-wrap { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .signals-toolbar {
@@ -1008,8 +1039,8 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
 
 <!-- ── Header ── -->
 <div class="header">
-  <h1>metrics.db — Schema Diagram</h1>
-  <span class="subtitle">Pharma regional analytics · SQLite · 7 tables</span>
+  <h1>Insights Studio</h1>
+  <span class="subtitle">Pharma regional analytics · metrics.db · SQLite · 7 tables</span>
   <div class="header-spacer"></div>
   <button class="btn" onclick="toggleMetricsModal()">📊 Metrics</button>
   <button class="btn" onclick="toggleFramework()">📋 Framework</button>
@@ -1018,7 +1049,7 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
 
 <!-- ── Tabs ── -->
 <div class="tabs">
-  <button class="tab active" data-tab="schema" onclick="switchTab('schema')">🗂 Schema</button>
+  <button class="tab active" data-tab="schema" onclick="switchTab('schema')">🗂 Data &amp; Metrics</button>
   <button class="tab" data-tab="signals" onclick="switchTab('signals')">📈 Signals</button>
   <button class="tab" data-tab="sigan" onclick="switchTab('sigan')">📊 Signal Analysis</button>
   <button class="tab" data-tab="findings" onclick="switchTab('findings')">🔎 Findings</button>
@@ -1257,6 +1288,7 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
         <span class="signals-meta" id="sa-meta"></span>
       </div>
       <div class="signals-body">
+        <div class="sa-desc" id="sa-desc"></div>
         <div class="signals-interp" id="sa-legend"></div>
         <div id="sa-compose-bar" hidden></div>
         <div id="sa-results">Loading…</div>
@@ -1321,7 +1353,9 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
       <span class="row-info" id="data-modal-info"></span>
       <button class="modal-close" onclick="closeDataModal()">✕</button>
     </div>
+    <div class="data-modal-toolbar" id="data-modal-toolbar" hidden></div>
     <div class="data-modal-body" id="data-modal-body"></div>
+    <div class="data-modal-footer" id="data-modal-footer" hidden></div>
   </div>
 </div>
 
@@ -1470,40 +1504,97 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
 </div>
 
 <script>
-function openDataModal(tableName) {
-  const rows = TABLE_DATA[tableName];
-  const total = TABLE_TOTAL_ROWS[tableName];
-  if (!rows || !rows.length) return;
+// ── Live data browser (folded in from the Studio DataExplorer) ──────────────
+// Clicking a table opens a paginated, filterable view backed by /api/data —
+// not the old embedded sample.
+const DM_PAGE = 50;
+let dmTable = null, dmPage = 0, dmTotal = 0, dmMonths = null;
+const dmFilters = { brand: '', period_type: '', year_month: '' };
 
+async function openDataModal(tableName) {
+  dmTable = tableName; dmPage = 0;
+  dmFilters.brand = dmFilters.period_type = dmFilters.year_month = '';
   document.getElementById('data-modal-title').textContent = tableName;
-  const showing = rows.length < total ? `showing ${rows.length} of ${total.toLocaleString()} rows` : `all ${total} rows`;
-  document.getElementById('data-modal-info').textContent = showing;
-
-  const cols = Object.keys(rows[0]);
-  const numericCols = new Set(cols.filter(c => typeof rows[0][c] === 'number'));
-
-  let html = '<table class="data-table"><thead><tr>';
-  html += cols.map(c => `<th>${c}</th>`).join('');
-  html += '</tr></thead><tbody>';
-  for (const row of rows) {
-    html += '<tr>' + cols.map(c => {
-      const v = row[c];
-      const isNum = numericCols.has(c);
-      const display = v === null ? '<span style="color:#ccc">·</span>' :
-                      typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString() : parseFloat(v.toFixed(2)).toLocaleString()) :
-                      String(v);
-      return `<td${isNum ? ' class="num"' : ''}>${display}</td>`;
-    }).join('') + '</tr>';
-  }
-  html += '</tbody></table>';
-
-  document.getElementById('data-modal-body').innerHTML = html;
   document.getElementById('data-modal').classList.add('open');
+  await dmBuildToolbar();
+  dmLoad();
+}
+
+async function dmBuildToolbar() {
+  const bar = document.getElementById('data-modal-toolbar');
+  if (dmTable !== 'region_metrics') { bar.hidden = true; bar.innerHTML = ''; return; }
+  if (!META) { try { META = await (await fetch('/api/report/meta')).json(); } catch (e) {} }
+  if (!dmMonths) {
+    try {
+      const d = await (await fetch('/api/data/region_metrics?limit=500&offset=0')).json();
+      dmMonths = [...new Set((d.data?.rows || []).map(r => String(r.year_month)))].sort();
+    } catch (e) { dmMonths = []; }
+  }
+  const opt = (vals, sel, all) => `<option value="">${all}</option>` +
+    (vals || []).map(v => `<option${v === sel ? ' selected' : ''}>${v}</option>`).join('');
+  bar.innerHTML =
+    `<select onchange="dmSetFilter('brand', this.value)">${opt(META && META.brands, dmFilters.brand, 'All brands')}</select>` +
+    `<select onchange="dmSetFilter('period_type', this.value)">${opt(META && META.periods, dmFilters.period_type, 'All period types')}</select>` +
+    `<select onchange="dmSetFilter('year_month', this.value)">${opt(dmMonths, dmFilters.year_month, 'All months')}</select>`;
+  bar.hidden = false;
+}
+
+function dmSetFilter(k, v) { dmFilters[k] = v; dmPage = 0; dmLoad(); }
+function dmSetPage(p) { dmPage = p; dmLoad(); }
+
+async function dmLoad() {
+  const body = document.getElementById('data-modal-body');
+  body.innerHTML = '<div style="padding:18px;color:#888;font-size:12px">Loading…</div>';
+  const params = new URLSearchParams({ limit: String(DM_PAGE), offset: String(dmPage * DM_PAGE) });
+  if (dmTable === 'region_metrics') {
+    if (dmFilters.brand) params.set('brand', dmFilters.brand);
+    if (dmFilters.period_type) params.set('period_type', dmFilters.period_type);
+    if (dmFilters.year_month) params.set('year_month', dmFilters.year_month);
+  }
+  let d;
+  try { d = await (await fetch(`/api/data/${dmTable}?${params}`)).json(); }
+  catch (e) { body.innerHTML = '<div style="padding:18px;color:#cc3322;font-size:12px">Request failed.</div>'; return; }
+  const rows = d.data?.rows || [];
+  dmTotal = d.data?.total || 0;
+  const cols = (d.data?.columns && d.data.columns.length) ? d.data.columns : (rows[0] ? Object.keys(rows[0]) : []);
+  document.getElementById('data-modal-info').textContent =
+    dmTotal ? `showing ${rows.length} of ${dmTotal.toLocaleString()} rows` : 'no rows';
+
+  if (!rows.length) {
+    body.innerHTML = '<div style="padding:18px;color:#888;font-size:12px">No rows found.</div>';
+  } else {
+    const numericCols = new Set(cols.filter(c => typeof rows[0][c] === 'number'));
+    let html = '<table class="data-table"><thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+    for (const row of rows) {
+      html += '<tr>' + cols.map(c => {
+        const v = row[c];
+        const display = v === null || v === undefined ? '<span style="color:#ccc">·</span>' :
+                        typeof v === 'number' ? (Number.isInteger(v) ? v.toLocaleString() : parseFloat(v.toFixed(2)).toLocaleString()) :
+                        String(v);
+        return `<td${numericCols.has(c) ? ' class="num"' : ''}>${display}</td>`;
+      }).join('') + '</tr>';
+    }
+    body.innerHTML = html + '</tbody></table>';
+  }
+
+  const foot = document.getElementById('data-modal-footer');
+  const pages = Math.ceil(dmTotal / DM_PAGE);
+  if (pages > 1) {
+    foot.innerHTML =
+      `<button onclick="dmSetPage(${dmPage - 1})"${dmPage === 0 ? ' disabled' : ''}>← Prev</button>` +
+      `<span>Page ${dmPage + 1} of ${pages}</span>` +
+      `<button onclick="dmSetPage(${dmPage + 1})"${dmPage >= pages - 1 ? ' disabled' : ''}>Next →</button>`;
+    foot.hidden = false;
+  } else {
+    foot.hidden = true; foot.innerHTML = '';
+  }
 }
 
 function closeDataModal() {
   document.getElementById('data-modal').classList.remove('open');
   document.getElementById('data-modal-body').innerHTML = '';
+  document.getElementById('data-modal-footer').hidden = true;
+  document.getElementById('data-modal-toolbar').hidden = true;
 }
 
 function openMetric(id) {
@@ -1549,6 +1640,14 @@ window.addEventListener('load', () => {
     document.getElementById('theme-btn').textContent = '☀️ Light';
   }
   // framework is now a modal — opened on demand, not persisted
+
+  // Embed mode: when mounted inside the Insights Studio shell as ?panel=<tab>,
+  // hide our own header + tabs and show just the requested panel.
+  const panel = new URLSearchParams(location.search).get('panel');
+  if (panel && document.getElementById('tab-' + panel)) {
+    document.body.classList.add('embed');
+    switchTab(panel);
+  }
 });
 </script>
 
@@ -2024,7 +2123,14 @@ async function initSigan() {
       .sa-mono{font-family:'Menlo',monospace}
       .sa-contrib{color:#777;font-size:11px}
       .sa-chk{display:inline-flex;align-items:center;gap:5px;margin:3px 12px 3px 0;font-size:12px}
-      .sa-bar{display:flex;flex-wrap:wrap;gap:2px;align-items:center;padding:8px 0}`;
+      .sa-bar{display:flex;flex-wrap:wrap;gap:2px;align-items:center;padding:8px 0}
+      .sa-desc{font-size:12px;line-height:1.6;color:#555;background:#f6f8fa;border:1px solid #e5e9ee;
+        border-left:3px solid #2266aa;border-radius:5px;padding:9px 13px;margin-bottom:14px;max-width:920px}
+      .sa-desc b{color:#333}
+      .sa-desc code{font-family:'Menlo',monospace;font-size:11px;background:#eaeef3;padding:1px 4px;border-radius:3px}
+      body.dark-theme .sa-desc{color:#aab;background:#11151f;border-color:#222a38;border-left-color:#6ab4d8}
+      body.dark-theme .sa-desc b{color:#dde}
+      body.dark-theme .sa-desc code{background:#1a2030}`;
     document.head.appendChild(st);
   }
   try {
@@ -2041,10 +2147,29 @@ async function initSigan() {
   loadSigan();
 }
 
+const SA_DESC = {
+  loud: `<b>Loudest</b> ranks every <code>signal × entity</code> across <em>all</em> metrics. Loudness
+    <code>V = Σ|step deltas|</code> is kept raw in each metric's own units, so it's never compared directly —
+    instead two scale-free views are: <b>vs peers</b> (percentile of V among entities of the same metric) and
+    <b>vs self</b> (robust z of V against this entity's own past). Rows are sorted by vs-peers, then vs-self.`,
+  compose: `<b>Compose</b> fuses the checked signals into one trajectory. Each signal's monthly steps are
+    standardized by that metric's own step-scale (MAD of one-month deltas), so a 1-MAD move in a 1–100 rank and
+    a 1-MAD move in a −1…1 deviation count <em>equally</em> — this is what makes differently-scaled metrics
+    addable. Composite loudness is the total variation of the combined standardized path, in σ units. Signals
+    must share one grain (region entities and territory entities never overlap).`,
+  search: `<b>Auto-search</b> is a discovery sweep: it brute-forces every combination of <b>2–3 signals within
+    the same grain</b> (region combos, territory combos — never mixed, since their entities don't overlap),
+    builds each composite with the same MAD-standardization as Compose, and scores it. Combos are ranked by
+    <b>loudness p95</b> (how loud each bundle's loudest regions get); <b>max</b> and <b>loudest regions</b> show
+    where it fires. It finds <em>which bundles of metrics are jointly moving the most, and where</em> — not
+    correlations.`,
+};
+
 function setSaMode(m) {
   saMode = m;
   ['loud', 'compose', 'search'].forEach(x =>
     document.getElementById('sa-mode-' + x).classList.toggle('active', x === m));
+  document.getElementById('sa-desc').innerHTML = SA_DESC[m] || '';
   document.getElementById('sa-compose-bar').hidden = (m !== 'compose');
   document.getElementById('sa-topx-wrap').hidden = (m !== 'loud');
   if (m === 'loud') renderSaLoud();
@@ -2063,6 +2188,7 @@ async function loadSigan() {
   if (saData.error) { out.innerHTML = `<div class="sig-error">${saData.error}</div>`; return; }
   document.getElementById('sa-legend').innerHTML = Object.entries(saData.tag_legend)
     .map(([k, v]) => `${saTagBadge(k)} <span style="font-size:11px;color:#888">${v}</span>`).join(' &nbsp; ');
+  document.getElementById('sa-desc').innerHTML = SA_DESC[saMode] || '';
   if (saMode === 'loud') renderSaLoud(); else setSaMode(saMode);
 }
 

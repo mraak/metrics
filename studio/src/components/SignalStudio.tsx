@@ -34,7 +34,7 @@ function Sparkline({ series }: { series: number[] }) {
 
 function ShapeBadge({ shape }: { shape: string }) {
   const colors: Record<string, string> = {
-    trend: 'bg-blue-100 text-blue-700', unstable: 'bg-orange-100 text-orange-700',
+    trend: 'bg-blue-100 text-[#2266aa]', unstable: 'bg-orange-100 text-orange-700',
     mixed: 'bg-yellow-100 text-yellow-700', quiet: 'bg-gray-100 text-gray-500',
   }
   return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${colors[shape] ?? 'bg-gray-100 text-gray-500'}`}>{shape}</span>
@@ -163,25 +163,25 @@ export default function SignalStudio({ initialSignals }: Props) {
   const selectedLags = draft.lags ?? []
   const Err = ({ msg }: { msg?: string }) => msg ? <p className="text-xs text-[#e03131] mt-0.5">{msg}</p> : null
   const Lbl = ({ text, tip }: { text: string; tip: string }) => (
-    <label className="block text-xs font-medium text-[#6b7280] mb-1">{text}<Tooltip text={tip} /></label>
+    <label className="block text-xs font-medium text-[#888888] mb-1">{text}<Tooltip text={tip} /></label>
   )
-  const inp = (err?: string) => `w-full border rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3b5bdb] ${err ? 'border-[#e03131]' : 'border-[#e2e8f0]'}`
+  const inp = (err?: string) => `w-full border rounded px-3 py-1.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#2266aa] ${err ? 'border-[#e03131]' : 'border-[#e0e0e0]'}`
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)]">
-      <aside className="w-64 bg-white border-r border-[#e2e8f0] flex flex-col shrink-0">
-        <div className="px-4 py-3 border-b border-[#e2e8f0] flex items-center justify-between">
+      <aside className="w-64 bg-white border-r border-[#e0e0e0] flex flex-col shrink-0">
+        <div className="px-4 py-3 border-b border-[#e0e0e0] flex items-center justify-between">
           <h2 className="font-semibold text-sm text-[#1a2030]">Signals</h2>
-          <button onClick={newSignal} className="text-xs bg-[#3b5bdb] text-white px-2 py-1 rounded hover:bg-blue-700 transition-colors">+ New</button>
+          <button onClick={newSignal} className="text-xs bg-[#2266aa] text-white px-2 py-1 rounded hover:bg-[#1a5288] transition-colors">+ New</button>
         </div>
         <div className="overflow-y-auto flex-1">
-          {signals.length === 0 && <p className="text-xs text-[#6b7280] px-4 py-3">No signals yet.</p>}
+          {signals.length === 0 && <p className="text-xs text-[#888888] px-4 py-3">No signals yet.</p>}
           {signals.map(sig => (
             <button key={sig.id} onClick={() => selectSignal(sig)}
-              className={`w-full text-left px-4 py-3 border-b border-[#e2e8f0] hover:bg-[#f4f6f9] transition-colors ${selected === sig.id ? 'bg-blue-50 border-l-2 border-l-[#3b5bdb]' : ''}`}>
+              className={`w-full text-left px-4 py-3 border-b border-[#e0e0e0] hover:bg-[#f5f7fa] transition-colors ${selected === sig.id ? 'bg-blue-50 border-l-2 border-l-[#2266aa]' : ''}`}>
               <div className="font-medium text-xs text-[#1a2030] truncate">{sig.name}</div>
-              <div className="text-xs text-[#6b7280] mt-0.5 truncate">{sig.metric} · {sig.source_table}</div>
-              <div className="text-xs text-[#6b7280]">lags: [{sig.lags.join(', ')}]</div>
+              <div className="text-xs text-[#888888] mt-0.5 truncate">{sig.metric} · {sig.source_table}</div>
+              <div className="text-xs text-[#888888]">lags: [{sig.lags.join(', ')}]</div>
             </button>
           ))}
         </div>
@@ -189,10 +189,10 @@ export default function SignalStudio({ initialSignals }: Props) {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-6 space-y-6">
-          <div className="bg-white rounded-lg border border-[#e2e8f0] shadow-sm">
-            <div className="px-6 py-4 border-b border-[#e2e8f0]">
+          <div className="bg-white rounded-lg border border-[#e0e0e0] shadow-sm">
+            <div className="px-6 py-4 border-b border-[#e0e0e0]">
               <h2 className="font-semibold text-[#1a2030]">{selected ? 'Edit Signal' : 'New Signal'}</h2>
-              <p className="text-xs text-[#6b7280] mt-1">A Signal is a comparative metric watched over time. Pick any table — the engine adapts to the schema. No assumptions about region names, period types, or brands.</p>
+              <p className="text-xs text-[#888888] mt-1">A Signal is a comparative metric watched over time. Pick any table — the engine adapts to the schema. No assumptions about region names, period types, or brands.</p>
             </div>
             <div className="p-6 space-y-6">
 
@@ -255,26 +255,26 @@ export default function SignalStudio({ initialSignals }: Props) {
                     <span className="text-xs font-semibold text-[#1a2030] uppercase tracking-wide">Filters</span>
                     <Tooltip text="Fixed WHERE conditions for every run. Use instead of hardcoding period_type or other slice dimensions in code. Example: period_type = MAT. Conditions are AND-ed." />
                   </div>
-                  <button onClick={addFilter} disabled={!allCols.length} className="text-xs text-[#3b5bdb] hover:underline disabled:opacity-40">+ Add filter</button>
+                  <button onClick={addFilter} disabled={!allCols.length} className="text-xs text-[#2266aa] hover:underline disabled:opacity-40">+ Add filter</button>
                 </div>
                 {(draft.filters ?? []).length === 0 && (
-                  <p className="text-xs text-[#6b7280] italic">No filters — reads all rows in the table (filtered only by segment values at run time).</p>
+                  <p className="text-xs text-[#888888] italic">No filters — reads all rows in the table (filtered only by segment values at run time).</p>
                 )}
                 <div className="space-y-2">
                   {(draft.filters ?? []).map((f, i) => (
                     <div key={i} className="flex gap-2 items-center">
                       <select value={f.column} onChange={e => updateFilter(i, { column: e.target.value })}
-                        className="border border-[#e2e8f0] rounded px-2 py-1 text-xs bg-white flex-1">
+                        className="border border-[#e0e0e0] rounded px-2 py-1 text-xs bg-white flex-1">
                         {allCols.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <select value={f.operator} onChange={e => updateFilter(i, { operator: e.target.value as FilterCondition['operator'] })}
-                        className="border border-[#e2e8f0] rounded px-2 py-1 text-xs bg-white w-16">
+                        className="border border-[#e0e0e0] rounded px-2 py-1 text-xs bg-white w-16">
                         {OPERATORS.map(op => <option key={op} value={op}>{op}</option>)}
                       </select>
                       <input type="text" value={Array.isArray(f.value) ? f.value.join(', ') : String(f.value)}
                         onChange={e => updateFilter(i, { value: f.operator === 'IN' ? e.target.value.split(',').map(s => s.trim()) : e.target.value })}
-                        className="border border-[#e2e8f0] rounded px-2 py-1 text-xs flex-1" placeholder="value (IN: comma-separated)" />
-                      <button onClick={() => removeFilter(i)} className="text-[#6b7280] hover:text-[#e03131] text-sm px-1">×</button>
+                        className="border border-[#e0e0e0] rounded px-2 py-1 text-xs flex-1" placeholder="value (IN: comma-separated)" />
+                      <button onClick={() => removeFilter(i)} className="text-[#888888] hover:text-[#e03131] text-sm px-1">×</button>
                     </div>
                   ))}
                 </div>
@@ -288,13 +288,13 @@ export default function SignalStudio({ initialSignals }: Props) {
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
                   {(draft.segment_by ?? []).map(col => (
-                    <span key={col} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-xs px-2 py-1 rounded">
+                    <span key={col} className="inline-flex items-center gap-1 bg-blue-50 text-[#2266aa] text-xs px-2 py-1 rounded">
                       {col}
-                      <button onClick={() => removeSegment(col)} className="text-blue-400 hover:text-blue-700 ml-0.5">×</button>
+                      <button onClick={() => removeSegment(col)} className="text-blue-400 hover:text-[#2266aa] ml-0.5">×</button>
                     </span>
                   ))}
                   <select onChange={e => { addSegment(e.target.value); e.target.value = '' }}
-                    className="border border-[#e2e8f0] rounded px-2 py-1 text-xs bg-white" disabled={!allCols.length}>
+                    className="border border-[#e0e0e0] rounded px-2 py-1 text-xs bg-white" disabled={!allCols.length}>
                     <option value="">+ Add segment column…</option>
                     {allCols.filter(c => !(draft.segment_by ?? []).includes(c)).map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -328,7 +328,7 @@ export default function SignalStudio({ initialSignals }: Props) {
                     <div className="flex flex-wrap gap-2 mt-1">
                       {ALL_LAGS.map(lag => (
                         <label key={lag} className="flex items-center gap-1 cursor-pointer">
-                          <input type="checkbox" checked={selectedLags.includes(lag)} onChange={() => toggleLag(lag)} className="accent-[#3b5bdb]" />
+                          <input type="checkbox" checked={selectedLags.includes(lag)} onChange={() => toggleLag(lag)} className="accent-[#2266aa]" />
                           <span className="text-xs">{lag === 0 ? 'now' : `−${lag}`}</span>
                         </label>
                       ))}
@@ -340,11 +340,11 @@ export default function SignalStudio({ initialSignals }: Props) {
                     <div className="flex flex-wrap gap-2 mt-1">
                       {ALL_LAGS.filter(l => l > 0 && selectedLags.includes(l)).map(lag => (
                         <label key={lag} className="flex items-center gap-1 cursor-pointer">
-                          <input type="checkbox" checked={(draft.delta_lags ?? []).includes(lag)} onChange={() => toggleDeltaLag(lag)} className="accent-[#3b5bdb]" />
+                          <input type="checkbox" checked={(draft.delta_lags ?? []).includes(lag)} onChange={() => toggleDeltaLag(lag)} className="accent-[#2266aa]" />
                           <span className="text-xs">Δ−{lag}</span>
                         </label>
                       ))}
-                      {selectedLags.filter(l => l > 0).length === 0 && <span className="text-xs text-[#6b7280]">Select lags first</span>}
+                      {selectedLags.filter(l => l > 0).length === 0 && <span className="text-xs text-[#888888]">Select lags first</span>}
                     </div>
                   </div>
                   <div>
@@ -364,7 +364,7 @@ export default function SignalStudio({ initialSignals }: Props) {
               </div>
 
               {/* Preview execution */}
-              <div className="border-t border-[#e2e8f0] pt-4">
+              <div className="border-t border-[#e0e0e0] pt-4">
                 <div className="flex items-center gap-2 mb-2">
                   <span className="text-xs font-semibold text-[#1a2030] uppercase tracking-wide">Preview execution</span>
                   <Tooltip text="Pick one value per segment_by column to preview. The definition itself is not scoped to any value — this just controls which slice you preview against." />
@@ -375,9 +375,9 @@ export default function SignalStudio({ initialSignals }: Props) {
                       const seg = preview?.segments.find(s => s.column === col)
                       return (
                         <div key={col}>
-                          <label className="block text-xs text-[#6b7280] mb-1">{col}</label>
+                          <label className="block text-xs text-[#888888] mb-1">{col}</label>
                           <select value={segmentValues[col] ?? ''} onChange={e => setSegmentValues(sv => ({ ...sv, [col]: e.target.value }))}
-                            className="border border-[#e2e8f0] rounded px-2 py-1.5 text-xs bg-white">
+                            className="border border-[#e0e0e0] rounded px-2 py-1.5 text-xs bg-white">
                             <option value="">— run without filter (loads values after first preview) —</option>
                             {(seg?.values ?? []).map(v => <option key={v} value={v}>{v}</option>)}
                           </select>
@@ -386,14 +386,14 @@ export default function SignalStudio({ initialSignals }: Props) {
                     })}
                   </div>
                 ) : (
-                  <p className="text-xs text-[#6b7280] mb-3">No segment columns — signal runs across all rows matching the filters.</p>
+                  <p className="text-xs text-[#888888] mb-3">No segment columns — signal runs across all rows matching the filters.</p>
                 )}
                 {errors._global && (
                   <div className="bg-red-50 border border-red-200 rounded px-3 py-2 text-sm text-[#e03131] mb-3">{errors._global}</div>
                 )}
                 <div className="flex gap-3">
                   <button onClick={runPreview} disabled={previewing}
-                    className="px-4 py-2 bg-[#3b5bdb] text-white rounded text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                    className="px-4 py-2 bg-[#2266aa] text-white rounded text-sm font-medium hover:bg-[#1a5288] disabled:opacity-50 transition-colors">
                     {previewing ? 'Running…' : '▶ Preview'}
                   </button>
                   <button onClick={saveSignal} disabled={saving}
@@ -412,32 +412,32 @@ export default function SignalStudio({ initialSignals }: Props) {
             </div>
           )}
           {preview && (
-            <div className="bg-white rounded-lg border border-[#e2e8f0] shadow-sm">
-              <div className="px-6 py-4 border-b border-[#e2e8f0] flex items-center justify-between">
+            <div className="bg-white rounded-lg border border-[#e0e0e0] shadow-sm">
+              <div className="px-6 py-4 border-b border-[#e0e0e0] flex items-center justify-between">
                 <h3 className="font-semibold text-[#1a2030]">Preview Results</h3>
-                <span className="text-xs text-[#6b7280]">
+                <span className="text-xs text-[#888888]">
                   {preview.count} {draft.entity_dimension || 'entities'}{preview.asof ? ` · as-of ${preview.asof}` : ''}
                   {Object.entries(segmentValues).filter(([,v]) => v).map(([k, v]) => ` · ${k}=${v}`).join('')}
                 </span>
               </div>
               {preview.count === 0 ? (
-                <p className="p-6 text-sm text-[#6b7280]">No rows. Check that filters match the data and lags don't exceed available history.</p>
+                <p className="p-6 text-sm text-[#888888]">No rows. Check that filters match the data and lags don't exceed available history.</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="bg-[#f8fafc] border-b border-[#e2e8f0]">
-                        <th className="text-left px-4 py-2 font-medium text-[#6b7280]">{draft.entity_dimension || 'Entity'}</th>
-                        <th className="text-left px-4 py-2 font-medium text-[#6b7280]">Series (oldest→now)</th>
-                        <th className="text-right px-4 py-2 font-medium text-[#6b7280]">V</th>
-                        <th className="text-right px-4 py-2 font-medium text-[#6b7280]">net</th>
-                        <th className="text-right px-4 py-2 font-medium text-[#6b7280]">ρ</th>
-                        <th className="text-left px-4 py-2 font-medium text-[#6b7280]">shape</th>
+                      <tr className="bg-[#f5f7fa] border-b border-[#e0e0e0]">
+                        <th className="text-left px-4 py-2 font-medium text-[#888888]">{draft.entity_dimension || 'Entity'}</th>
+                        <th className="text-left px-4 py-2 font-medium text-[#888888]">Series (oldest→now)</th>
+                        <th className="text-right px-4 py-2 font-medium text-[#888888]">V</th>
+                        <th className="text-right px-4 py-2 font-medium text-[#888888]">net</th>
+                        <th className="text-right px-4 py-2 font-medium text-[#888888]">ρ</th>
+                        <th className="text-left px-4 py-2 font-medium text-[#888888]">shape</th>
                       </tr>
                     </thead>
                     <tbody>
                       {preview.rows.map((row, i) => (
-                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-[#f8fafc]'}>
+                        <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-[#f5f7fa]'}>
                           <td className="px-4 py-2 font-medium text-[#1a2030]">{row.entity}</td>
                           <td className="px-4 py-2"><Sparkline series={row.series} /></td>
                           <td className="px-4 py-2 text-right font-mono">{row.strength.magnitude.toFixed(3)}</td>
