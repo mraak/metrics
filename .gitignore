@@ -41,3 +41,7 @@ build/
 .env
 .env.*
 secrets.py
+
+# SQLite WAL sidecars
+*.db-shm
+*.db-wal

@@ -1,9 +1,7 @@
-import { readAllSignals } from '@/lib/knowledge-store'
-import SignalStudio from '@/components/SignalStudio'
+import ReportFrame from '@/components/ReportFrame'
 
-export const dynamic = 'force-dynamic'
-
+// The actual Signals readout — per-entity signal + strength + relevance,
+// mounted from the schema.html report shell.
 export default function SignalsPage() {
-  const initialSignals = readAllSignals()
-  return <SignalStudio initialSignals={initialSignals} />
+  return <ReportFrame panel="signals" />
 }

@@ -1,14 +1,7 @@
-import { readAllSignals, readAllFindingDefs, readAllFramings } from '@/lib/knowledge-store'
-import InsightFramer from '@/components/InsightFramer'
+import ReportFrame from '@/components/ReportFrame'
 
-export const dynamic = 'force-dynamic'
-
+// The actual Insights readout — per-persona reports (Sales Manager / Rep / CEO),
+// mounted from the schema.html report shell.
 export default function InsightsPage() {
-  return (
-    <InsightFramer
-      initialFramings={readAllFramings()}
-      initialFindings={readAllFindingDefs()}
-      initialSignals={readAllSignals()}
-    />
-  )
+  return <ReportFrame panel="insights" />
 }

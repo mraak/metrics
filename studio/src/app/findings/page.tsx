@@ -1,8 +1,7 @@
-import { readAllSignals, readAllFindingDefs } from '@/lib/knowledge-store'
-import FindingComposer from '@/components/FindingComposer'
+import ReportFrame from '@/components/ReportFrame'
 
-export const dynamic = 'force-dynamic'
-
+// The actual Findings readout — share×growth quadrant classification + history,
+// mounted from the schema.html report shell.
 export default function FindingsPage() {
-  return <FindingComposer initialFindings={readAllFindingDefs()} initialSignals={readAllSignals()} />
+  return <ReportFrame panel="findings" />
 }
