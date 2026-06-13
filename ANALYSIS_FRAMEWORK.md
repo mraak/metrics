@@ -58,13 +58,16 @@ cd studio && npm run validate -- --signal mshare_deviation_mat  # compile a sign
 │   ├── sales (110,291 rows) — Raw sales facts, own & competitors
 │   ├── forecast (186 rows) — National forecast baseline
 │   ├── region_metrics — Computed metrics at the REGION grain (Tiers 1-2)
-│   └── territory_metrics — Same metric columns at the TERRITORY grain
-│       (regions summed; market share re-derived from summed own vs summed
-│        franchise totals — share is NOT additive)
+│   ├── territory_metrics — Same metric columns at the TERRITORY grain
+│   │   (regions summed; market share re-derived from summed own vs summed
+│   │    franchise totals — share is NOT additive)
+│   └── national_metrics — Same columns at the NATIONAL grain (per brand;
+│       deviations collapse to 0 — no peer above brand — so the meaningful
+│       columns are the absolute share / growth / vs-forecast)
 │
 ├── Python (offline ETL only):
 │   ├── seed.py            — synthesizes raw sales/forecast facts
-│   └── compute_metrics.py — one pipeline, both grains → region_metrics + territory_metrics
+│   └── compute_metrics.py — one pipeline, three grains → region/territory/national_metrics
 │
 ├── Knowledge Definitions:
 │   └── knowledge_definitions.json
@@ -681,7 +684,7 @@ The framework persists in exactly three places. Tiers 1–2 are the source of tr
 
 | Store | Holds | Tiers | Lifecycle |
 |-------|-------|-------|-----------|
-| **`region_metrics` / `territory_metrics`** (SQL) | metrics + comparative metrics, one table per grain | 1–2 | refreshed each period by `compute_metrics.py` (one pipeline, both grains) — the single source of truth |
+| **`region_metrics` / `territory_metrics` / `national_metrics`** (SQL) | metrics + comparative metrics, one table per grain | 1–2 | refreshed each period by `compute_metrics.py` (one pipeline, three grains) — the single source of truth. Higher grains are MATERIALIZED, not rolled up: the metrics are non-additive ratios + grain-relative ranks, so each level is recomputed from summed components. |
 | **Knowledge Definitions** | *definitions*: signal templates, executable finding/insight definitions, recipes, framings | the "how" for 3–5 | curated by analysts (via the Studio editors), version-controlled |
 | **Finding catalog** ("book of facts") | composed findings in `studio/studio.db` (`findings_catalog`), each embedding a JSON snapshot of the signals + values that produced it | 4 | generated on demand or scheduled |
 

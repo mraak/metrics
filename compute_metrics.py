@@ -164,10 +164,13 @@ def build_metrics(monthly, entity_col, id_cols):
     """
     base = monthly.copy()
     base["year"] = base["year_month"].str[:4]
-    base = base.sort_values(["brand_name", entity_col, "year_month"]).reset_index(drop=True)
+    # National grain has entity_col == "brand_name"; dedupe so the entity keys
+    # don't list brand_name twice (one row per brand IS the entity there).
+    ent_keys = list(dict.fromkeys(["brand_name", entity_col]))
+    base = base.sort_values(ent_keys + ["year_month"]).reset_index(drop=True)
 
-    grp    = base.groupby(["brand_name", entity_col])
-    grp_yr = base.groupby(["brand_name", entity_col, "year"])
+    grp    = base.groupby(ent_keys)
+    grp_yr = base.groupby(ent_keys + ["year"])
 
     def roll3(s):  return s.rolling(3,  min_periods=3).sum()
     def roll12(s): return s.rolling(12, min_periods=12).sum()
@@ -239,8 +242,8 @@ def build_metrics(monthly, entity_col, id_cols):
         sub["mshare_deviation"] = (sub["market_share"] - sub["nat_ms"]).round(2)
 
         # Market share deviation growth: YoY and PoP change of the deviation itself
-        sub = sub.sort_values(["brand_name", entity_col, "year_month"]).reset_index(drop=True)
-        grp_be = sub.groupby(["brand_name", entity_col])
+        sub = sub.sort_values(ent_keys + ["year_month"]).reset_index(drop=True)
+        grp_be = sub.groupby(ent_keys)
 
         shift_pp = {"Month": 1, "RollQ": 3, "YTD": 12, "MAT": 1}[period_type]
         sub["mshare_dev_py"] = grp_be["mshare_deviation"].transform(lambda x: x.shift(12))
@@ -278,11 +281,11 @@ def build_metrics(monthly, entity_col, id_cols):
         metrics[rank_col] = metrics.groupby(rk_grp)[src_col].transform(ntile100)
 
     # Rank trend
-    metrics = metrics.sort_values(["brand_name", entity_col, "period_type", "year_month"]) \
+    metrics = metrics.sort_values(ent_keys + ["period_type", "year_month"]) \
                      .reset_index(drop=True)
     metrics["rank_trend_3m"] = (
         metrics
-        .groupby(["brand_name", entity_col, "period_type"])["rank_sales_eur"]
+        .groupby(ent_keys + ["period_type"])["rank_sales_eur"]
         .transform(lambda x: x.astype(float).diff(3).round().astype("Int64"))
     )
     return metrics
@@ -302,21 +305,36 @@ t_monthly = (
 )
 t_metrics = build_metrics(t_monthly, "territory_name", ["territory_id", "territory_name"])
 
+# National grain: sum the monthly own/total sums over ALL regions per brand —
+# one row per brand = the brand's national position. The entity IS the brand, so
+# the peer-relative columns collapse to zero (mshare_deviation/growth_deviation;
+# no peer above brand yet) and ranks are trivial. The MEANINGFUL columns are the
+# absolute ones — market_share, growth_py/pp, growth_vs_fcst — which is exactly
+# what the app's national summary reads (no more back-deriving it in the UI).
+n_monthly = (
+    base.groupby(["year_month", "brand_name", "franchise"],
+                 as_index=False)[["own_u", "own_s", "tot_u", "tot_s"]].sum()
+)
+n_metrics = build_metrics(n_monthly, "brand_name", [])
+
 # ── 7. Write to DB ────────────────────────────────────────────────────────────
 
 con = sqlite3.connect(DB)
 cur = con.cursor()
-cur.execute("DROP TABLE IF EXISTS region_metrics")
-cur.execute("DROP TABLE IF EXISTS territory_metrics")
+for t in ("region_metrics", "territory_metrics", "national_metrics"):
+    cur.execute(f"DROP TABLE IF EXISTS {t}")
 con.commit()
 
 metrics.to_sql("region_metrics", con, index=False, if_exists="replace", chunksize=10_000)
 t_metrics.to_sql("territory_metrics", con, index=False, if_exists="replace", chunksize=10_000)
+n_metrics.to_sql("national_metrics", con, index=False, if_exists="replace", chunksize=10_000)
 
 for col in ["year_month", "period_type", "franchise", "brand_name", "region_name", "territory_id"]:
     cur.execute(f"CREATE INDEX idx_rm_{col.replace('_','')} ON region_metrics({col})")
 for col in ["year_month", "period_type", "franchise", "brand_name", "territory_name"]:
     cur.execute(f"CREATE INDEX idx_tm_{col.replace('_','')} ON territory_metrics({col})")
+for col in ["year_month", "period_type", "franchise", "brand_name"]:
+    cur.execute(f"CREATE INDEX idx_nm_{col.replace('_','')} ON national_metrics({col})")
 con.commit()
 con.close()
 
@@ -324,6 +342,7 @@ con.close()
 
 print(f"region_metrics:    {len(metrics):,} rows")
 print(f"territory_metrics: {len(t_metrics):,} rows")
+print(f"national_metrics:  {len(n_metrics):,} rows")
 print(f"Grain: {len(months)} months × {len(brand_franchise)} brands × 4 periods × "
       f"{len(rnames)} regions / {t_monthly.territory_name.nunique()} territories\n")
 

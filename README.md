@@ -57,11 +57,12 @@ metrics.db (SQLite Database)
 │   └── forecast (186 rows) — national baseline
 └── Computed Metrics
     ├── region_metrics    — Tiers 1-2 at the REGION grain
-    └── territory_metrics — same columns at the TERRITORY grain (share re-derived, not averaged)
+    ├── territory_metrics — same columns at the TERRITORY grain (share re-derived, not averaged)
+    └── national_metrics  — same columns at the NATIONAL grain (per brand; deviations = 0, no peer above brand)
 
 Python (offline ETL only)
 ├── seed.py             → Synthesizes the raw sales/forecast facts
-└── compute_metrics.py  → One pipeline, both grains → region_metrics + territory_metrics
+└── compute_metrics.py  → One pipeline, three grains → region/territory/national_metrics
 
 Knowledge Definitions (ALL Tier 3-5 definitions, version-controlled)
 └── knowledge_definitions.json → signal templates · finding definitions · insight templates

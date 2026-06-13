@@ -1,12 +1,16 @@
-// territory.ts — TypeScript port of territory.py: the TERRITORY-level readout
-// for the report app's territory blocks (national summary + per-territory table).
+// territory.ts — the TERRITORY-level readout for the report app's territory
+// blocks (national summary + per-territory table).
 //
-// Reads the materialized territory_metrics table (Tier 1-2 at the territory
-// grain) and runs the same signal machinery as regions, with the signal
-// resolved from the Knowledge Definitions by ROLE (signal_roles.territory_position).
-// National references are recovered from the stored deviations (any territory
-// row): nat_ms = market_share − mshare_deviation, nat_growth = growth_py_sales −
-// growth_deviation, nat fcst growth = growth_py_sales − growth_vs_fcst_eur.
+// Reads two materialized grains directly (Tier 1-2, built by compute_metrics.py):
+//   territory_metrics — per territory; the signal machinery runs on its
+//                       mshare_deviation, signal resolved by ROLE
+//                       (signal_roles.territory_position).
+//   national_metrics  — per brand; the national summary's absolute columns
+//                       (sales / share / growth / vs-forecast). Its share signal
+//                       is the national share's own trajectory (no peer above
+//                       brand, so its deviations are 0 by construction).
+// Plan attainment (actual ÷ forecast level) is national-only and computed here
+// from the forecast table.
 import { metricsDb } from './db'
 import {
   knowledgeDefs, signalTemplates, role, signalStrength, round, type Json,
@@ -23,6 +27,17 @@ interface TRow {
   growth_pp_sales: number | null
   growth_vs_fcst_eur: number | null
   growth_deviation: number | null
+}
+
+// One national_metrics row (per brand × month × period); the brand's national position.
+interface NRow {
+  ym: string
+  sales_eur: number
+  units: number
+  market_share: number | null
+  growth_py_sales: number | null
+  growth_pp_sales: number | null
+  growth_vs_fcst_eur: number | null
 }
 
 const rnd1 = (v: number | null | undefined): number | null => (v == null ? null : round(v, 1))
@@ -71,28 +86,22 @@ export function territoryMetrics(brand: string, asofParam?: string): Json {
   for (const r of rows) {
     ;(byT[r.t] = byT[r.t] ?? {})[r.ym] = r
   }
-  // national series recovered from sums + stored deviations (identical across rows)
-  const nat: Record<string, { own: number; units: number; ms: number | null; growth_py: number | null }> = {}
-  for (const ym of yms) {
-    const per = Object.values(byT).map(s => s[ym]).filter(Boolean)
-    if (!per.length) continue
-    const ref = per.find(p => p.mshare_deviation != null)
-    const gref = per.find(p => p.growth_py_sales != null && p.growth_deviation != null)
-    nat[ym] = {
-      own: per.reduce((a, p) => a + (p.sales_eur ?? 0), 0),
-      units: per.reduce((a, p) => a + (p.units ?? 0), 0),
-      ms: ref ? (ref.market_share as number) - (ref.mshare_deviation as number) : null,
-      growth_py: gref ? (gref.growth_py_sales as number) - (gref.growth_deviation as number) : null,
-    }
+  // National row per month from the materialized national_metrics table (one row
+  // per brand = the brand's national position). No longer back-derived from
+  // territory sums — the absolute columns are computed correctly by the ETL.
+  const natByYm: Record<string, NRow> = {}
+  for (const r of db.prepare(`
+    SELECT year_month AS ym, sales_eur, units, market_share,
+           growth_py_sales, growth_pp_sales, growth_vs_fcst_eur
+    FROM national_metrics
+    WHERE brand_name = ? AND period_type = 'MAT'
+  `).all(brand) as NRow[]) {
+    natByYm[r.ym] = r
   }
-  let natFcstGrowth: number | null = null
-  for (const s of Object.values(byT)) {
-    const p = s[asof]
-    if (p && p.growth_py_sales != null && p.growth_vs_fcst_eur != null) {
-      natFcstGrowth = p.growth_py_sales - p.growth_vs_fcst_eur
-      break
-    }
-  }
+  const ncur = natByYm[asof]
+  const natFcstGrowth = ncur && ncur.growth_py_sales != null && ncur.growth_vs_fcst_eur != null
+    ? ncur.growth_py_sales - ncur.growth_vs_fcst_eur
+    : null
 
   const periodFcst = (period: string): number | null => {
     let ms: string[]
@@ -115,25 +124,21 @@ export function territoryMetrics(brand: string, asofParam?: string): Json {
 
   // National product summary (no peer level above it yet — franchise comes
   // later — so its market-share "signal" is the national share's own trajectory).
-  const natAt = (off: number) => (i - off >= 0 && i - off < yms.length ? nat[yms[i - off]] : undefined)
-  const ncur = nat[asof]
+  const natAt = (off: number) => (i - off >= 0 && i - off < yms.length ? natByYm[yms[i - off]] : undefined)
   let national: Json | null = null
   if (ncur) {
-    const npp = natAt(1)
-    const ngPp = npp && npp.own ? (ncur.own - npp.own) / npp.own * 100 : null
-    const ngvf = ncur.growth_py != null && natFcstGrowth != null ? ncur.growth_py - natFcstGrowth : null
-    let sh: (number | null)[] = sigOffsets.map(off => natAt(off)?.ms ?? null)
+    let sh: (number | null)[] = sigOffsets.map(off => natAt(off)?.market_share ?? null)
     let nsig: Json | null = null
     if (sh.every(x => x != null)) {
       sh = sh.map(x => round(x as number, 2))
       nsig = signalStrength(sh as number[], sigTpl.direction, defs, sigKind) as unknown as Json
     }
     national = {
-      mat_sales: round(ncur.own, 0), units: round(ncur.units, 0),
-      growth_py: rnd1(ncur.growth_py),
-      growth_pp: rnd1(ngPp),
-      market_share: rnd1(ncur.ms),
-      growth_vs_fcst: rnd1(ngvf),
+      mat_sales: round(ncur.sales_eur, 0), units: round(ncur.units, 0),
+      growth_py: rnd1(ncur.growth_py_sales),
+      growth_pp: rnd1(ncur.growth_pp_sales),
+      market_share: rnd1(ncur.market_share),
+      growth_vs_fcst: rnd1(ncur.growth_vs_fcst_eur),
       share_series: sh.every(x => x != null) ? sh : null,
       signal: nsig,
       attainment,
