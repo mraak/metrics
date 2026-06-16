@@ -2383,13 +2383,15 @@ function renderSearchTable() {
   }
   const { col, dir } = saSearchSort;
   const sorted = [...saSearchCombos].sort((a, b) => dir * ((b[col] ?? 0) - (a[col] ?? 0)));
+  // Columns grouped: NET together, LOUDNESS together, KER together.
   const cols = [
-    { key: 'net_total',    label: 'market net',   tip: 'Market-wide net σ for this combination: the sum of EVERY entity\'s total net (not any single entity). Reinforcing deterioration across many entities piles up; scattered/opposing moves cancel. This is a whole-population number — an individual entity in the detail can be far more negative. Sort ascending to find combinations dragging the market down.' },
-    { key: 'loudness_p95', label: 'loudness p95', tip: 'Total variation of the standardized path (σ) — how much movement overall, high end (p95) across entities' },
-    { key: 'net_worst',    label: 'net worst',    tip: 'Total net σ = additive tally of per-signal net moves (reinforcing signals pile on: −5 & −2 → −7; opposing cancel: −5 & +5 → 0). Most-negative single entity (5th pct). Sort ascending to find the combos with the worst individual entity.' },
-    { key: 'net_best',     label: 'net best',     tip: 'Total net σ = additive tally of per-signal net moves. Most-positive single entity (95th pct). Sort descending to find the combos with the best individual entity.' },
-    { key: 'ker_worst',    label: 'KER worst',    tip: 'Most-negative KER across entities (5th pct), range −1…+1. −1 = clean deteriorating trend (no reversals).' },
-    { key: 'ker_best',     label: 'KER best',     tip: 'Most-positive KER across entities (95th pct), range −1…+1. +1 = clean improving trend (no reversals).' },
+    { key: 'net_total',    label: 'market net',   signed: true, strong: true, tip: 'NET · Market-wide net σ for this combination: the sum of EVERY entity\'s total net (not any single entity). Reinforcing deterioration across many entities piles up; scattered/opposing moves cancel. A whole-population number — an individual entity in the detail can be far more negative. Sort ascending to find combinations dragging the market down.' },
+    { key: 'net_worst',    label: 'net worst',    signed: true, tip: 'NET · Total net σ = additive tally of per-signal net moves (reinforcing pile on: −5 & −2 → −7; opposing cancel: −5 & +5 → 0). Most-negative single entity (5th pct). Sort ascending for the combos with the worst individual entity.' },
+    { key: 'net_best',     label: 'net best',     signed: true, tip: 'NET · Total net σ. Most-positive single entity (95th pct). Sort descending for the combos with the best individual entity.' },
+    { key: 'loudness_p95', label: 'loudness p95', signed: false, tip: 'LOUDNESS · Total variation of the standardized path (σ) — how much movement overall. The 95th-percentile entity (high end across the population).' },
+    { key: 'max_loudness', label: 'loudness max', signed: false, tip: 'LOUDNESS · The single loudest entity in this combination (σ) — the maximum composite loudness of any one entity, vs. loudness p95 which is the 95th-percentile across entities.' },
+    { key: 'ker_worst',    label: 'KER worst',    signed: true, tip: 'KER · Most-negative KER across entities (5th pct), range −1…+1. −1 = clean deteriorating trend (no reversals).' },
+    { key: 'ker_best',     label: 'KER best',     signed: true, tip: 'KER · Most-positive KER across entities (95th pct), range −1…+1. +1 = clean improving trend (no reversals).' },
   ];
   const thSort = k => {
     const active = col === k;
@@ -2397,22 +2399,21 @@ function renderSearchTable() {
     return `<th class="num sa-sort-th${active ? ' sa-sort-active' : ''}" onclick="sortSearchBy('${k}')" title="${cols.find(c=>c.key===k)?.tip||''}" style="cursor:pointer">${cols.find(c=>c.key===k)?.label||k}${arrow}</th>`;
   };
   const signedCell = v => `<span style="color:${(v ?? 0) < 0 ? '#c0392b' : '#1e8449'}">${(v ?? 0).toFixed(2)}</span>`;
+  const cell = (c, k) => {
+    const def = cols.find(x => x.key === k);
+    const inner = def.signed ? signedCell(c[k]) : (c[k] ?? 0).toFixed(2);
+    return `<td class="num${col === k ? ' sa-sort-active' : ''}">${def.strong ? `<b>${inner}</b>` : inner}</td>`;
+  };
   const body = sorted.slice(0, 30).map((c, i) => `<tr class="cd-row-click" onclick="openSearchDetail(${saSearchCombos.indexOf(c)})">
       <td class="num">${i + 1}</td>
       <td class="sa-mono">${c.signals.map(saSig).join('  +  ')}</td>
-      <td class="num${col==='net_total'?' sa-sort-active':''}"><b>${signedCell(c.net_total)}</b></td>
-      <td class="num${col==='loudness_p95'?' sa-sort-active':''}">${(c.loudness_p95??0).toFixed(2)}</td>
-      <td class="num${col==='net_worst'?' sa-sort-active':''}">${signedCell(c.net_worst)}</td>
-      <td class="num${col==='net_best'?' sa-sort-active':''}">${signedCell(c.net_best)}</td>
-      <td class="num${col==='ker_worst'?' sa-sort-active':''}">${signedCell(c.ker_worst)}</td>
-      <td class="num${col==='ker_best'?' sa-sort-active':''}">${signedCell(c.ker_best)}</td>
-      <td class="num">${(c.max_loudness??0).toFixed(2)}</td>
+      ${cols.map(co => cell(c, co.key)).join('')}
       <td style="color:#888;font-size:11px">${(c.top_regions||[]).join(', ')}</td></tr>`).join('');
   document.getElementById('sa-results').innerHTML = `<table class="sa-table"><thead><tr>
       <th class="num">#</th>
       <th title="Click any row for per-entity charts and interpretation">combo · click for detail</th>
-      ${thSort('net_total')}${thSort('loudness_p95')}${thSort('net_worst')}${thSort('net_best')}${thSort('ker_worst')}${thSort('ker_best')}
-      <th class="num">max</th><th>loudest entities</th>
+      ${cols.map(co => thSort(co.key)).join('')}
+      <th title="The 3 loudest entities in this combination">loudest entities</th>
     </tr></thead><tbody>${body}</tbody></table>`;
 }
 
