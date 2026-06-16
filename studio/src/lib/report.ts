@@ -38,6 +38,7 @@ export function apiMeta(): Json {
   const signals = Object.entries(signalTemplates(defs)).map(([k, v]) => ({
     id: k, metric: v.metric, period_type: v.period_type,
     level: level(v),
+    direction: v.direction ?? 'higher_is_better',
     interpretation: v.interpretation ?? '',
   }))
   const roles: Record<string, string> = {}

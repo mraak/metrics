@@ -2100,7 +2100,8 @@ function sortBy(i) {
 /* ── Signal Analysis tab (cross-metric loudness + composites) ── */
 let siganInited = false, saMode = 'loud', saData = null;
 let saLevel = 'region', saComposeRows = [], saSearchCombos = [], saComposeSignals = [];
-const SA_INTERP = {};   // signal id -> curated interpretation (for tooltips)
+const SA_INTERP = {};    // signal id -> curated interpretation (for tooltips)
+const SA_SIG_META = {};  // signal id -> full META.signals entry {metric, direction, level, …}
 const SA_TAG = {
   eruption: { c: '#cc3322', l: '🌋 Eruption' },
   chronic:  { c: '#9a7700', l: '🔁 Chronic' },
@@ -2169,7 +2170,10 @@ async function initSigan() {
       '<div class="sig-error">No API server. Run <code>npm run dev</code> in studio/ and reload.</div>';
     return;
   }
-  (META.signals || []).forEach(s => { SA_INTERP[s.id] = s.interpretation || ''; });
+  (META.signals || []).forEach(s => {
+    SA_INTERP[s.id] = s.interpretation || '';
+    SA_SIG_META[s.id] = s;   // full metadata: metric, direction, level, interpretation
+  });
   const bsel = document.getElementById('sa-brand');
   bsel.innerHTML = META.brands.map(b => `<option>${b}</option>`).join('');
   renderComposeBar();
@@ -2340,7 +2344,7 @@ async function runSaSearch() {
 /* ── Composite detail helpers ── */
 
 function miniSparkline(series, color, w, h) {
-  w = w || 90; h = h || 44;
+  w = w || 96; h = h || 44;
   const pad = 6;
   const min = Math.min(...series), max = Math.max(...series);
   const range = max - min || 0.0001;
@@ -2359,73 +2363,169 @@ function miniSparkline(series, color, w, h) {
     ${dots}${labels}</svg>`;
 }
 
-function possibleMeanings(contrib, sigIds) {
-  if (!contrib || !sigIds || !sigIds.length) return ['No contribution data available.'];
-  const allDirs = sigIds.map(sid => (contrib[sid] || {}).dir || 'flat');
-  const improving = allDirs.filter(d => d === 'improving').length;
-  const deteriorating = allDirs.filter(d => d === 'deteriorating').length;
-  if (improving === sigIds.length) return [
-    'All tracked metrics improving simultaneously — broad-based positive momentum.',
-    'Possible execution win: field activity, product positioning, and distribution reinforcing each other.',
-    'Check whether this outpaces the franchise trend or if the whole market is rising.',
-  ];
-  if (deteriorating === sigIds.length) return [
-    'All tracked metrics deteriorating together — broad-based pressure.',
-    'Possible causes: competitive displacement, rep productivity gap, market contraction, or missing promotion.',
-    'Escalation candidate — check if the territory level confirms the same pattern.',
-  ];
-  if (improving > 0 && deteriorating > 0) return [
-    'Divergent signals — some metrics improving while others decline.',
-    'Possible mean-reversion: a strong rank correcting after a run-up in a lagging metric.',
-    'Or a leading indicator is turning before the lagging one follows — watch next period for convergence.',
-    'Divergent composites drive volatility: the pull between forces is what makes the bundle loud.',
-  ];
-  return [
-    'Mixed movement: most metrics flat, one or two making a minor move.',
-    'Low-conviction signal — monitor, but not a priority for action.',
-  ];
+// Classify a metric name into a semantic bucket so interpretation can reason
+// about combinations without reading knowledge_definitions.json.
+function sigCat(metric) {
+  if (!metric) return 'other';
+  const m = metric.toLowerCase();
+  if (m.includes('mshare_deviation') || m.includes('market_share_deviation')) return 'share_rel';
+  if (m.includes('market_share') || m === 'mshare') return 'share_abs';
+  if (m.includes('growth_deviation')) return 'growth_rel';
+  if (m.includes('growth_py') || m.includes('growth')) return 'growth_abs';
+  if (m.includes('rank')) return 'rank';
+  if (m.includes('units')) return 'units';
+  if (m.includes('sales') || m.includes('revenue')) return 'revenue';
+  return 'other';
+}
+
+// Return true when the "improving" direction means the metric value went UP.
+// For rank, lower number = better = improving means value went DOWN — invert.
+function hibFromMeta(sid) {
+  const m = SA_SIG_META[sid];
+  if (!m) return true;
+  return m.direction !== 'lower_is_better';
+}
+
+// Semantic business interpretation of a composite — understands what it means
+// when share moves opposite to growth, rank moves with share, etc.
+// No knowledge_definitions.json needed: all logic derived from metric category.
+function businessInterpretation(contrib, sigIds) {
+  if (!contrib || !sigIds || !sigIds.length) return ['No contribution data.'];
+
+  const parts = sigIds.map(sid => {
+    const c = contrib[sid] || {};
+    const meta = SA_SIG_META[sid] || {};
+    return { sid, cat: sigCat(meta.metric || ''), dir: c.dir || 'flat', net: c.net || 0 };
+  });
+
+  const find = (...cats) => parts.find(p => cats.includes(p.cat));
+  const share  = find('share_rel', 'share_abs');
+  const growth = find('growth_rel', 'growth_abs');
+  const rank   = find('rank');
+
+  const bullets = [];
+
+  // ── Share × Growth (most common combo) ───────────────────────────────────
+  if (share && growth) {
+    const su = share.dir === 'improving', gu = growth.dir === 'improving';
+    if (su && gu) {
+      bullets.push('<b>Gaining relative share and outpacing market growth</b> — dual reinforcement. Strong execution signal or white-space capture.');
+      bullets.push('If territory-wide: possible campaign, rep-activity surge, or competitor withdrawal.');
+      bullets.push('Check: is this above the franchise trend, or is the whole market rising together?');
+    } else if (su && !gu) {
+      bullets.push('<b>Gaining share in a contracting or slower-growing market</b> — losing less than peers, not winning in absolute terms.');
+      bullets.push('Volume may still be declining; the win is <em>relative</em>. A defensive hold rather than an offensive gain.');
+      bullets.push('If rank is stable, this is a resilient position under market pressure. If rank is slipping, the relative gain may not offset absolute loss.');
+    } else if (!su && gu) {
+      bullets.push('<b>Growing in absolute sales but losing relative market share</b> — the market is expanding <em>faster</em> than this region.');
+      bullets.push('Classic opportunity gap: market pulled ahead of your pace. Question: is capacity or coverage the constraint?');
+      bullets.push('Not an execution failure in itself — but a risk if the gap widens and competitors lock in the new share. Watch for 2–3 more periods.');
+    } else {
+      bullets.push('<b>Losing share and underperforming market growth</b> — compound pressure on both axes.');
+      bullets.push('Likely causes: competitive displacement, rep productivity gap, promotion absence, or market exit by a key account.');
+      bullets.push('Priority: determine whether this is isolated to this entity or a territory-wide pattern. If territory confirms, escalate.');
+    }
+  }
+
+  // ── Share × Rank ──────────────────────────────────────────────────────────
+  else if (share && rank) {
+    const su = share.dir === 'improving', ru = rank.dir === 'improving';
+    if (su && ru) {
+      bullets.push('<b>Both relative share and absolute volume rank improving</b> — broad regional win, two independent axes confirming the same story.');
+    } else if (su && !ru) {
+      bullets.push('<b>Gaining share but slipping in absolute volume rank.</b> Unusual combination — possible market-concentration shift, or a smaller-base region gaining disproportionate relative share while a larger neighbor grows faster.');
+    } else if (!su && ru) {
+      bullets.push('<b>Losing relative share but holding or improving absolute rank.</b> Possible explanation: market is concentrating toward top-volume players, or national share fell while absolute volume stayed competitive.');
+      bullets.push('Not necessarily an alarm — may reflect a healthy consolidation. Confirm by checking growth.');
+    } else {
+      bullets.push('<b>Both relative share and absolute rank deteriorating</b> — broad-based decline, likely compounding over time without intervention.');
+    }
+  }
+
+  // ── Growth × Rank ─────────────────────────────────────────────────────────
+  else if (growth && rank) {
+    const gu = growth.dir === 'improving', ru = rank.dir === 'improving';
+    if (gu && ru) {
+      bullets.push('<b>Growing faster than market and rising in absolute rank</b> — accelerating win position on both axes.');
+    } else if (gu && !ru) {
+      bullets.push('<b>Growth accelerating but volume rank slipping</b> — others are growing even faster. Relative position is at risk despite positive absolute momentum.');
+    } else if (!gu && ru) {
+      bullets.push('<b>Growth slowing but rank stable or improving</b> — possibly coasting on volume from prior gains while growth decelerates. A lagging-indicator risk.');
+    } else {
+      bullets.push('<b>Both growth and rank declining</b> — structural pressure, not a transient dip. The absolute and relative stories agree.');
+    }
+  }
+
+  // ── Generic fallback ──────────────────────────────────────────────────────
+  else {
+    const improving   = parts.filter(p => p.dir === 'improving').length;
+    const deteriorating = parts.filter(p => p.dir === 'deteriorating').length;
+    if (improving === parts.length) {
+      bullets.push('<b>All metrics improving together</b> — broad-based positive momentum. Reinforcing signals are the strongest execution indicator.');
+    } else if (deteriorating === parts.length) {
+      bullets.push('<b>All metrics deteriorating together</b> — broad-based pressure. Escalation candidate if the territory level confirms.');
+    } else if (improving > 0 && deteriorating > 0) {
+      bullets.push('<b>Divergent signals</b> — some metrics improving while others decline. The composite is loud because the forces pull in opposite directions.');
+      bullets.push('Watch the lagging metric: whichever is moving second often confirms the trend direction in the next 1–2 periods.');
+    } else {
+      bullets.push('Mixed movement: most metrics flat with minor moves. Low-conviction signal — monitor, not a priority for action.');
+    }
+  }
+
+  return bullets;
 }
 
 const MAD_HTML = `<div class="cd-mad">
   <b>What is MAD?</b> Before compositing, each metric is standardized by its own <b>step-scale</b>: the
   <b>Median Absolute Deviation (MAD)</b> of one-month changes, pooled over all brands and entities at this grain.
-  MAD is a robust measure of a typical monthly step — unlike standard deviation it ignores extremes.
+  MAD is a robust measure of a typical monthly move — unlike standard deviation it ignores extremes.
   A 1-MAD step in a 1–100 rank and a 1-MAD step in a ±15 pp deviation count <em>equally</em> in the composite,
-  so differently-scaled metrics are truly addable. Composite loudness is in <b>σ units</b> (multiples of the
-  combined step-scale), making values comparable across any metric combination.
+  so differently-scaled metrics are truly addable. Composite loudness is in <b>σ units</b>, making values
+  comparable across any metric combination.
 </div>`;
+
+// Build a signal card with sparkline + raw series trail + metric label.
+function sigCard(sid, contrib) {
+  const c = contrib[sid];
+  if (!c) return '';
+  const meta = SA_SIG_META[sid] || {};
+  const col = c.net > 0.01 ? '#1a8a55' : c.net < -0.01 ? '#cc3322' : '#888';
+  const arrowCol = c.dir === 'improving' ? '#1a8a55' : c.dir === 'deteriorating' ? '#cc3322' : '#888';
+  const arrow = c.dir === 'improving' ? '▲' : c.dir === 'deteriorating' ? '▼' : '—';
+  const trail = c.series.map(v => v.toFixed(1)).join(' → ');
+  const metricLabel = meta.metric ? `<div style="font-size:10px;color:#aaa;margin-bottom:3px">${meta.metric}</div>` : '';
+  return `<div class="cd-sig">
+    <div class="cd-sig-name">${saSig(sid)}</div>
+    ${metricLabel}
+    ${miniSparkline(c.series, col)}
+    <div style="font-size:10px;color:#999;margin:3px 0 2px;word-break:break-all">${trail}</div>
+    <div class="cd-sig-stats" style="color:${arrowCol}">${arrow} net ${c.net >= 0 ? '+' : ''}${c.net.toFixed(2)} · ${c.dir}</div>
+  </div>`;
+}
+
+function verdictBadge(contrib, sigIds) {
+  const dirs = sigIds.map(sid => (contrib[sid] || {}).dir);
+  const allUp = dirs.every(d => d === 'improving');
+  const allDown = dirs.every(d => d === 'deteriorating');
+  const allFlat = dirs.every(d => d === 'flat');
+  if (allUp)   return ['reinforcing-up',   '▲ Reinforcing — all metrics improving'];
+  if (allDown) return ['reinforcing-down', '▼ Reinforcing — all metrics deteriorating'];
+  if (allFlat) return ['mixed',            '— All quiet, no net direction'];
+  return ['divergent', '⟺ Divergent — signals pulling opposite ways'];
+}
 
 function openComposeDetail(i) {
   const row = saComposeRows[i];
   if (!row) return;
   const sigIds = saComposeSignals;
-  const cards = sigIds.map(sid => {
-    const c = row.contrib[sid];
-    if (!c) return '';
-    const col = c.net > 0.01 ? '#1a8a55' : c.net < -0.01 ? '#cc3322' : '#888';
-    const arrowCol = c.dir === 'improving' ? '#1a8a55' : c.dir === 'deteriorating' ? '#cc3322' : '#888';
-    const arrow = c.dir === 'improving' ? '▲' : c.dir === 'deteriorating' ? '▼' : '—';
-    return `<div class="cd-sig">
-      <div class="cd-sig-name">${saSig(sid)}</div>
-      ${miniSparkline(c.series, col)}
-      <div class="cd-sig-stats" style="color:${arrowCol}">${arrow} net ${c.net >= 0 ? '+' : ''}${c.net.toFixed(2)} · ${c.dir}</div>
-    </div>`;
-  }).join('');
-  const allDirs = sigIds.map(sid => (row.contrib[sid] || {}).dir);
-  const allUp = allDirs.every(d => d === 'improving');
-  const allDown = allDirs.every(d => d === 'deteriorating');
-  const allFlat = allDirs.every(d => d === 'flat');
-  let vc, vt;
-  if (allUp)        { vc = 'reinforcing-up';   vt = '▲ Reinforcing — all metrics improving'; }
-  else if (allDown) { vc = 'reinforcing-down'; vt = '▼ Reinforcing — all metrics deteriorating'; }
-  else if (allFlat) { vc = 'mixed';            vt = '— All quiet, no net direction'; }
-  else              { vc = 'divergent';        vt = '⟺ Divergent — signals pulling opposite ways'; }
-  const bullets = possibleMeanings(row.contrib, sigIds);
+  const cards = sigIds.map(sid => sigCard(sid, row.contrib)).join('');
+  const [vc, vt] = verdictBadge(row.contrib, sigIds);
+  const bullets = businessInterpretation(row.contrib, sigIds);
   openInfo(`Composite detail · ${row.region}`,
     `<div class="info-note">Composite loudness <b>${row.composite_loudness.toFixed(2)} σ</b> — ${row.read}</div>
      <div class="cd-verdict ${vc}">${vt}</div>
      <div class="cd-grid">${cards}</div>
-     <b style="font-size:12px;color:#666;display:block;margin:4px 0 2px">Possible meanings</b>
+     <b style="font-size:12px;color:#555;display:block;margin:6px 0 3px">Business interpretation</b>
      <ul class="cd-meanings">${bullets.map(b => `<li>${b}</li>`).join('')}</ul>
      ${MAD_HTML}`);
 }
@@ -2434,47 +2534,29 @@ async function openSearchDetail(i) {
   const combo = saSearchCombos[i];
   if (!combo) return;
   const brand = document.getElementById('sa-brand').value;
-  openInfo(`${combo.signals.map(saSig).join(' + ')}`, 'Loading top entities…');
+  openInfo(`${combo.signals.map(saSig).join(' + ')}`, 'Loading…');
   let d;
   try { d = await (await fetch(`/api/report/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${combo.signals.join(',')}`)).json(); }
   catch (e) { openInfo('Search detail', '<div class="sig-error">Request failed.</div>'); return; }
   if (d.error) { openInfo('Search detail', `<div class="sig-error">${d.error}</div>`); return; }
+  // Already sorted loudest-first by the API; show top 5.
   const topRows = (d.rows || []).slice(0, 5);
-  const entityBlocks = topRows.map(row => {
+  const entityBlocks = topRows.map((row, ri) => {
     const sigIds = combo.signals;
-    const cards = sigIds.map(sid => {
-      const c = row.contrib[sid];
-      if (!c) return '';
-      const col = c.net > 0.01 ? '#1a8a55' : c.net < -0.01 ? '#cc3322' : '#888';
-      const arrowCol = c.dir === 'improving' ? '#1a8a55' : c.dir === 'deteriorating' ? '#cc3322' : '#888';
-      const arrow = c.dir === 'improving' ? '▲' : c.dir === 'deteriorating' ? '▼' : '—';
-      return `<div class="cd-sig">
-        <div class="cd-sig-name">${saSig(sid)}</div>
-        ${miniSparkline(c.series, col)}
-        <div class="cd-sig-stats" style="color:${arrowCol}">${arrow} net ${c.net >= 0 ? '+' : ''}${c.net.toFixed(2)} · ${c.dir}</div>
-      </div>`;
-    }).join('');
-    const allDirs = sigIds.map(sid => (row.contrib[sid] || {}).dir);
-    const allUp = allDirs.every(d => d === 'improving');
-    const allDown = allDirs.every(d => d === 'deteriorating');
-    let vc, vt;
-    if (allUp)        { vc = 'reinforcing-up';   vt = '▲ Reinforcing up'; }
-    else if (allDown) { vc = 'reinforcing-down'; vt = '▼ Reinforcing down'; }
-    else              { vc = 'divergent';        vt = '⟺ Divergent'; }
+    const cards = sigIds.map(sid => sigCard(sid, row.contrib)).join('');
+    const [vc, vt] = verdictBadge(row.contrib, sigIds);
     return `<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 12px;margin-bottom:10px">
-      <div style="font-weight:600;font-size:12px;margin-bottom:6px">${row.region}
+      <div style="font-weight:600;font-size:12px;margin-bottom:6px">#${ri + 1} · ${row.region}
         <span style="font-weight:400;color:#888"> · ${row.composite_loudness.toFixed(2)} σ</span>
         <span class="cd-verdict ${vc}" style="font-size:11px;padding:2px 8px;margin-left:8px">${vt}</span>
       </div>
       <div class="cd-grid">${cards}</div>
+      <ul class="cd-meanings" style="margin-top:5px">${businessInterpretation(row.contrib, sigIds).map(b => `<li>${b}</li>`).join('')}</ul>
     </div>`;
   }).join('');
-  const bullets = possibleMeanings(((d.rows || [])[0] || {}).contrib || {}, combo.signals);
-  openInfo(`${combo.signals.map(saSig).join(' + ')} · top ${topRows.length} entities`,
-    `<div class="info-note">p95 loudness <b>${combo.loudness_p95.toFixed(2)} σ</b> · max <b>${combo.max_loudness.toFixed(2)} σ</b> · ${d.rows.length} entities total</div>
+  openInfo(`${combo.signals.map(saSig).join(' + ')} · top ${topRows.length} of ${d.rows.length} entities`,
+    `<div class="info-note">Sorted by composite loudness · p95 <b>${combo.loudness_p95.toFixed(2)} σ</b> · max <b>${combo.max_loudness.toFixed(2)} σ</b></div>
      ${entityBlocks}
-     <b style="font-size:12px;color:#666;display:block;margin:4px 0 2px">Possible meanings (based on loudest entity)</b>
-     <ul class="cd-meanings">${bullets.map(b => `<li>${b}</li>`).join('')}</ul>
      ${MAD_HTML}`);
 }
 
