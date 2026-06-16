@@ -2363,112 +2363,156 @@ function miniSparkline(series, color, w, h) {
     ${dots}${labels}</svg>`;
 }
 
-// Classify a metric name into a semantic bucket so interpretation can reason
-// about combinations without reading knowledge_definitions.json.
+// Classify a metric into a semantic bucket used by businessInterpretation().
+// Distinguish peer-relative (deviation from national average) from absolute.
 function sigCat(metric) {
   if (!metric) return 'other';
   const m = metric.toLowerCase();
-  if (m.includes('mshare_deviation') || m.includes('market_share_deviation')) return 'share_rel';
+  // Peer-relative share: mshare_deviation = your share − volume-weighted national (±pp)
+  if (m === 'mshare_deviation' || m === 'market_share_deviation') return 'share_rel';
+  // Absolute share: market_share = your actual % of total market
   if (m.includes('market_share') || m === 'mshare') return 'share_abs';
-  if (m.includes('growth_deviation')) return 'growth_rel';
-  if (m.includes('growth_py') || m.includes('growth')) return 'growth_abs';
+  // Rate-of-change of the share deviation (momentum of the deviation itself)
+  if (m === 'growth_pp_mshare_dev') return 'share_momentum';
+  // Peer-relative growth: growth_deviation = your YoY% − national YoY% (±pp)
+  if (m === 'growth_deviation') return 'growth_rel';
+  // Absolute growth: actual YoY %
+  if (m.includes('growth_py') || m.includes('growth_vs_fcst')) return 'growth_abs';
   if (m.includes('rank')) return 'rank';
   if (m.includes('units')) return 'units';
   if (m.includes('sales') || m.includes('revenue')) return 'revenue';
   return 'other';
 }
 
-// Return true when the "improving" direction means the metric value went UP.
-// For rank, lower number = better = improving means value went DOWN — invert.
-function hibFromMeta(sid) {
-  const m = SA_SIG_META[sid];
-  if (!m) return true;
-  return m.direction !== 'lower_is_better';
-}
-
-// Semantic business interpretation of a composite — understands what it means
-// when share moves opposite to growth, rank moves with share, etc.
-// No knowledge_definitions.json needed: all logic derived from metric category.
+// Semantic business interpretation of a composite.
+// Knows the difference between peer-relative (deviation) and absolute metrics:
+//   share_rel = mshare_deviation (±pp vs national) — peer-relative
+//   share_abs = market_share (%) — absolute
+//   growth_rel = growth_deviation (±pp vs national) — peer-relative
+//   growth_abs = growth_py_sales etc. (YoY %) — absolute
+// These are different axes and produce completely different stories when combined.
 function businessInterpretation(contrib, sigIds) {
   if (!contrib || !sigIds || !sigIds.length) return ['No contribution data.'];
 
   const parts = sigIds.map(sid => {
     const c = contrib[sid] || {};
     const meta = SA_SIG_META[sid] || {};
-    return { sid, cat: sigCat(meta.metric || ''), dir: c.dir || 'flat', net: c.net || 0 };
+    return { sid, cat: sigCat(meta.metric || ''), dir: c.dir || 'flat', net: c.net || 0, metric: meta.metric || sid };
   });
 
   const find = (...cats) => parts.find(p => cats.includes(p.cat));
-  const share  = find('share_rel', 'share_abs');
-  const growth = find('growth_rel', 'growth_abs');
-  const rank   = find('rank');
+  const shareRel = find('share_rel');           // mshare_deviation
+  const shareAbs = find('share_abs');           // market_share
+  const growthRel = find('growth_rel');         // growth_deviation
+  const growthAbs = find('growth_abs');         // growth_py_sales / growth_py_units
+  const rank      = find('rank');
 
   const bullets = [];
 
-  // ── Share × Growth (most common combo) ───────────────────────────────────
-  if (share && growth) {
-    const su = share.dir === 'improving', gu = growth.dir === 'improving';
+  // ── Both peer-relative: share deviation × growth deviation ────────────────
+  // "How are you doing relative to the national benchmark on two axes?"
+  if (shareRel && growthRel) {
+    const su = shareRel.dir === 'improving', gu = growthRel.dir === 'improving';
     if (su && gu) {
-      bullets.push('<b>Gaining relative share and outpacing market growth</b> — dual reinforcement. Strong execution signal or white-space capture.');
-      bullets.push('If territory-wide: possible campaign, rep-activity surge, or competitor withdrawal.');
-      bullets.push('Check: is this above the franchise trend, or is the whole market rising together?');
+      bullets.push('<b>Above (or gaining on) the national average on both share and growth.</b> Both peer-relative axes reinforce each other — you\'re outperforming on volume position and momentum simultaneously.');
+      bullets.push('Strongest signal pattern: suggests structural advantage or sustained field execution above the benchmark.');
+      bullets.push('Check whether the franchise trend is similar, or this region is an outlier vs. its peers.');
     } else if (su && !gu) {
-      bullets.push('<b>Gaining share in a contracting or slower-growing market</b> — losing less than peers, not winning in absolute terms.');
-      bullets.push('Volume may still be declining; the win is <em>relative</em>. A defensive hold rather than an offensive gain.');
-      bullets.push('If rank is stable, this is a resilient position under market pressure. If rank is slipping, the relative gain may not offset absolute loss.');
+      bullets.push('<b>Share position improving vs. national, but growth rate slipping below the national pace.</b>');
+      bullets.push('Possible peaking dynamic: you already hold above-average share and growth is normalising. The market may be stabilising in this region.');
+      bullets.push('Or: a competitor is catching up on growth while your base share remains strong. Watch growth_deviation for 2–3 periods to see if it recovers.');
     } else if (!su && gu) {
-      bullets.push('<b>Growing in absolute sales but losing relative market share</b> — the market is expanding <em>faster</em> than this region.');
-      bullets.push('Classic opportunity gap: market pulled ahead of your pace. Question: is capacity or coverage the constraint?');
-      bullets.push('Not an execution failure in itself — but a risk if the gap widens and competitors lock in the new share. Watch for 2–3 more periods.');
+      bullets.push('<b>Growing faster than the national average, but share position is still below (or losing vs.) the benchmark.</b>');
+      bullets.push('Classic recovery / lagged-conversion pattern: growth momentum is there, but it hasn\'t yet translated into share. Share typically lags growth by 1–2 periods.');
+      bullets.push('Positive signal if growth_deviation is accelerating. Concern if share deviation is still widening despite the growth edge.');
     } else {
-      bullets.push('<b>Losing share and underperforming market growth</b> — compound pressure on both axes.');
-      bullets.push('Likely causes: competitive displacement, rep productivity gap, promotion absence, or market exit by a key account.');
-      bullets.push('Priority: determine whether this is isolated to this entity or a territory-wide pattern. If territory confirms, escalate.');
+      bullets.push('<b>Below the national average on both peer-relative axes</b> — underperforming vs. benchmark on share and growth simultaneously.');
+      bullets.push('The compound nature is the concern: a growth deficit that isn\'t correcting share suggests structural, not cyclical, pressure.');
+      bullets.push('Priority: identify root cause (competitive, access, rep coverage, or market structure) before territory confirms the pattern.');
+    }
+  }
+
+  // ── Peer-relative share × absolute growth ────────────────────────────────
+  // "Share vs. peers, but growth in absolute sales terms."
+  // This is the classic 'growing but losing share' case.
+  else if (shareRel && growthAbs) {
+    const su = shareRel.dir === 'improving', gu = growthAbs.dir === 'improving';
+    if (su && gu) {
+      bullets.push('<b>Gaining market share vs. national average AND growing in absolute sales.</b> Both axes positive: a genuine win.');
+      bullets.push('Not just growing with the market — outpacing it. The share gain is incremental capture, not just riding a market wave.');
+    } else if (su && !gu) {
+      bullets.push('<b>Gaining share vs. national average while absolute sales decline.</b> A defensive hold in a contracting market — you\'re losing less than the national average.');
+      bullets.push('The relative win is real but misleading in isolation: absolute volume is still going down. Watch rank to see if the volume position is weakening.');
+    } else if (!su && gu) {
+      bullets.push('<b>Absolute sales are growing, but share vs. the national average is declining.</b> The total market is expanding faster than your sales.');
+      bullets.push('You\'re not losing ground in absolute terms — the market just moved faster. The risk is that competitors are capturing the incremental demand you didn\'t reach.');
+      bullets.push('Key question: is this a coverage gap (you could reach it) or a structural one (competitors have product/access advantages)?');
+    } else {
+      bullets.push('<b>Losing share vs. national average AND declining in absolute sales.</b> Both axes deteriorating — structural pressure compounding over time.');
+      bullets.push('Distinguish market contraction (everyone is down) vs. execution gap (you\'re down more than peers). growth_deviation would clarify which story this is.');
+    }
+  }
+
+  // ── Absolute share × absolute growth ─────────────────────────────────────
+  else if (shareAbs && growthAbs) {
+    const su = shareAbs.dir === 'improving', gu = growthAbs.dir === 'improving';
+    if (su && gu) {
+      bullets.push('<b>Absolute market share increasing and absolute sales growing.</b> Clean reinforcement on both primary axes.');
+    } else if (su && !gu) {
+      bullets.push('<b>Market share increasing while absolute sales decline.</b> Share is growing because others are declining faster — typically a contracting market.');
+    } else if (!su && gu) {
+      bullets.push('<b>Absolute sales growing but market share declining.</b> The market is expanding faster than your sales — you\'re capturing less than your fair share of the growth.');
+    } else {
+      bullets.push('<b>Both absolute share and absolute sales declining.</b> Market contraction or strong competitive displacement.');
     }
   }
 
   // ── Share × Rank ──────────────────────────────────────────────────────────
-  else if (share && rank) {
+  else if ((shareRel || shareAbs) && rank) {
+    const share = shareRel || shareAbs;
+    const relNote = shareRel ? ' (vs. national average)' : '';
     const su = share.dir === 'improving', ru = rank.dir === 'improving';
     if (su && ru) {
-      bullets.push('<b>Both relative share and absolute volume rank improving</b> — broad regional win, two independent axes confirming the same story.');
+      bullets.push(`<b>Both share${relNote} and absolute volume rank improving.</b> Independent axes agreeing — strongest confirmation of a winning trajectory.`);
     } else if (su && !ru) {
-      bullets.push('<b>Gaining share but slipping in absolute volume rank.</b> Unusual combination — possible market-concentration shift, or a smaller-base region gaining disproportionate relative share while a larger neighbor grows faster.');
+      bullets.push(`<b>Gaining share${relNote} but slipping in absolute volume rank.</b> Possible market-concentration shift: a small-base region can gain relative share while its absolute rank is still modest.`);
     } else if (!su && ru) {
-      bullets.push('<b>Losing relative share but holding or improving absolute rank.</b> Possible explanation: market is concentrating toward top-volume players, or national share fell while absolute volume stayed competitive.');
-      bullets.push('Not necessarily an alarm — may reflect a healthy consolidation. Confirm by checking growth.');
+      bullets.push(`<b>Losing share${relNote} but holding or improving absolute rank.</b> Market may be consolidating toward top-volume players. Or: national average share rose faster than this region, pulling the deviation down despite healthy volume.`);
+      bullets.push('Not automatically an alarm — confirm by checking the growth axis.');
     } else {
-      bullets.push('<b>Both relative share and absolute rank deteriorating</b> — broad-based decline, likely compounding over time without intervention.');
+      bullets.push(`<b>Both share${relNote} and absolute rank deteriorating.</b> Broad-based decline; if trend persists, escalate.`);
     }
   }
 
   // ── Growth × Rank ─────────────────────────────────────────────────────────
-  else if (growth && rank) {
+  else if ((growthRel || growthAbs) && rank) {
+    const growth = growthRel || growthAbs;
+    const relNote = growthRel ? ' vs. national average' : '';
     const gu = growth.dir === 'improving', ru = rank.dir === 'improving';
     if (gu && ru) {
-      bullets.push('<b>Growing faster than market and rising in absolute rank</b> — accelerating win position on both axes.');
+      bullets.push(`<b>Growing faster${relNote} and rising in absolute volume rank.</b> Accelerating win position on both axes.`);
     } else if (gu && !ru) {
-      bullets.push('<b>Growth accelerating but volume rank slipping</b> — others are growing even faster. Relative position is at risk despite positive absolute momentum.');
+      bullets.push(`<b>Growth outpacing${relNote || ' the prior period'} but volume rank slipping.</b> Others are growing even faster — relative position is eroding despite positive momentum.`);
     } else if (!gu && ru) {
-      bullets.push('<b>Growth slowing but rank stable or improving</b> — possibly coasting on volume from prior gains while growth decelerates. A lagging-indicator risk.');
+      bullets.push(`<b>Growth slowing${relNote} but rank holding or improving.</b> Coasting on accumulated volume from prior growth. A lagging-indicator risk if growth doesn\'t recover.`);
     } else {
-      bullets.push('<b>Both growth and rank declining</b> — structural pressure, not a transient dip. The absolute and relative stories agree.');
+      bullets.push(`<b>Both growth${relNote} and volume rank declining.</b> Structural, not transient — the absolute and relative stories agree.`);
     }
   }
 
   // ── Generic fallback ──────────────────────────────────────────────────────
   else {
-    const improving   = parts.filter(p => p.dir === 'improving').length;
-    const deteriorating = parts.filter(p => p.dir === 'deteriorating').length;
-    if (improving === parts.length) {
-      bullets.push('<b>All metrics improving together</b> — broad-based positive momentum. Reinforcing signals are the strongest execution indicator.');
-    } else if (deteriorating === parts.length) {
-      bullets.push('<b>All metrics deteriorating together</b> — broad-based pressure. Escalation candidate if the territory level confirms.');
-    } else if (improving > 0 && deteriorating > 0) {
-      bullets.push('<b>Divergent signals</b> — some metrics improving while others decline. The composite is loud because the forces pull in opposite directions.');
-      bullets.push('Watch the lagging metric: whichever is moving second often confirms the trend direction in the next 1–2 periods.');
+    const nUp   = parts.filter(p => p.dir === 'improving').length;
+    const nDown = parts.filter(p => p.dir === 'deteriorating').length;
+    if (nUp === parts.length) {
+      bullets.push('<b>All metrics improving together.</b> Broad-based positive momentum — reinforcing signals are the strongest execution indicator.');
+    } else if (nDown === parts.length) {
+      bullets.push('<b>All metrics deteriorating together.</b> Broad-based pressure. Escalation candidate if territory level confirms.');
+    } else if (nUp > 0 && nDown > 0) {
+      bullets.push('<b>Divergent signals</b> — some metrics improving, others declining. The composite is loud because the forces pull in opposite directions.');
+      bullets.push('The lagging metric often follows the leading one within 1–2 periods — watch which one is moving first.');
     } else {
-      bullets.push('Mixed movement: most metrics flat with minor moves. Low-conviction signal — monitor, not a priority for action.');
+      bullets.push('Mixed movement: most metrics flat with minor moves. Low-conviction signal — monitor, not a priority.');
     }
   }
 
