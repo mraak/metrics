@@ -296,11 +296,11 @@ function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
     const netVec = (perStep ?? []).reduce<number[]>((acc, vec) =>
       acc.length ? acc.map((v, j) => v + vec[j]) : [...vec], [])
     const compNet = round(Math.sqrt(netVec.reduce((x, s) => x + s * s, 0)), 3)
-    // Trendiness ρ = net / loudness (0 = pure oscillation, 1 = clean trend)
-    const compTrend = round(compV > 0 ? compNet / compV : 0, 3)
+    // Consistency = net / loudness (0 = oscillation with no net move, 1 = clean directional trend)
+    const compConsistency = round(compV > 0 ? compNet / compV : 0, 3)
     rows.push({
       region: rg, composite_loudness: round(compV, 3),
-      composite_net: compNet, composite_trend: compTrend,
+      composite_net: compNet, composite_consistency: compConsistency,
       contrib, read: interpretComposite(compV, contrib),
     })
   }
@@ -361,7 +361,7 @@ export function search(brandParam?: string, asofParam?: string, maxK = 3, summar
           signals: combo, size: k,
           loudness_p95: pct(rows.map(r => r.composite_loudness as number)),
           net_p95:      pct(rows.map(r => r.composite_net     as number)),
-          trend_p95:    pct(rows.map(r => r.composite_trend   as number)),
+          consistency_p95: pct(rows.map(r => r.composite_consistency as number)),
           max_loudness: rows[0].composite_loudness,
           top_regions: rows.slice(0, 3).map(r => r.region),
         })
