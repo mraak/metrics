@@ -1273,9 +1273,8 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
     <div class="signals-wrap">
       <div class="signals-toolbar">
         <span><label>Brand</label><select id="sa-brand" onchange="loadSigan()"></select></span>
-        <span class="seg-group" title="Region signals run over postal regions; Territory signals over territories (their entities never overlap, so composites stay within one level)">
-          <button class="seg active" id="sa-level-region" onclick="setSaLevel('region')">Region</button>
-          <button class="seg" id="sa-level-territory" onclick="setSaLevel('territory')">Territory</button>
+        <span title="Entity grain — populated from the signals present in this dataset. Composites are only valid within one level.">
+          <label>Level</label><select id="sa-level" onchange="setSaLevel(this.value)"></select>
         </span>
         <span class="seg-group">
           <button class="seg active" id="sa-mode-loud" onclick="setSaMode('loud')">🔝 Loudest</button>
@@ -2100,6 +2099,9 @@ function sortBy(i) {
 /* ── Signal Analysis tab (cross-metric loudness + composites) ── */
 let siganInited = false, saMode = 'loud', saData = null;
 let saLevel = 'region', saComposeRows = [], saSearchCombos = [], saComposeSignals = [];
+let saSearchData = null;   // raw search API response
+let saSearchSort = { col: 'loudness_p95', dir: -1 };   // -1 = desc
+let saDetailRows = [], saDetailSigs = [], saDetailSort = 'loudness';
 const SA_INTERP = {};    // signal id -> curated interpretation (for tooltips)
 const SA_SIG_META = {};  // signal id -> full META.signals entry {metric, direction, level, …}
 const SA_TAG = {
@@ -2160,7 +2162,13 @@ async function initSigan() {
       body.dark-theme .cd-mad b{color:#6ab4d8}
       .cd-row-click{cursor:pointer}
       .cd-row-click:hover td{background:#f5f7fc}
-      body.dark-theme .cd-row-click:hover td{background:#181f2e}`;
+      body.dark-theme .cd-row-click:hover td{background:#181f2e}
+      .sa-sort-th{user-select:none}
+      .sa-sort-th:hover{color:#2266aa}
+      .sa-sort-active{color:#2266aa !important;font-weight:700}
+      body.dark-theme .sa-sort-th:hover{color:#6ab4d8}
+      body.dark-theme .sa-sort-active{color:#6ab4d8 !important}
+      .btn.small.active{background:#2266aa;color:#fff;border-color:#2266aa}`;
     document.head.appendChild(st);
   }
   try {
@@ -2172,10 +2180,15 @@ async function initSigan() {
   }
   (META.signals || []).forEach(s => {
     SA_INTERP[s.id] = s.interpretation || '';
-    SA_SIG_META[s.id] = s;   // full metadata: metric, direction, level, interpretation
+    SA_SIG_META[s.id] = s;
   });
   const bsel = document.getElementById('sa-brand');
   bsel.innerHTML = META.brands.map(b => `<option>${b}</option>`).join('');
+  // Populate level dropdown from actual signal levels in this dataset
+  const levels = [...new Set((META.signals || []).map(s => s.level))].filter(Boolean).sort();
+  const lsel = document.getElementById('sa-level');
+  lsel.innerHTML = levels.map(l => `<option value="${l}">${l[0].toUpperCase() + l.slice(1)}</option>`).join('');
+  if (levels.length) saLevel = levels[0];
   renderComposeBar();
   loadSigan();
 }
@@ -2213,8 +2226,6 @@ function setSaMode(m) {
 
 function setSaLevel(level) {
   saLevel = level;
-  ['region', 'territory'].forEach(l =>
-    document.getElementById('sa-level-' + l).classList.toggle('active', l === level));
   renderComposeBar();
   if (saMode === 'loud') renderSaLoud();
   else if (saMode === 'compose') document.getElementById('sa-results').innerHTML =
@@ -2324,20 +2335,47 @@ async function runSaSearch() {
   if (d.error) { out.innerHTML = `<div class="sig-error">${d.error}</div>`; return; }
   const sigLevels = {};
   (META.signals || []).forEach(s => { sigLevels[s.id] = s.level; });
-  const filtered = (d.combos || []).filter(c => c.signals.every(sid => sigLevels[sid] === saLevel));
-  saSearchCombos = filtered;
+  saSearchData = d;
+  saSearchCombos = (d.combos || []).filter(c => c.signals.every(sid => sigLevels[sid] === saLevel));
   document.getElementById('sa-meta').textContent =
-    `${d.brand} · as-of ${d.asof} · loudest ${saLevel} combinations (size 2–${d.max_k}) · ${filtered.length} combos`;
-  const body = filtered.slice(0, 25).map((c, i) => `<tr class="cd-row-click" onclick="openSearchDetail(${i})">
+    `${d.brand} · as-of ${d.asof} · ${saLevel} combinations (size 2–${d.max_k}) · ${saSearchCombos.length} combos`;
+  renderSearchTable();
+}
+
+function sortSearchBy(col) {
+  if (saSearchSort.col === col) saSearchSort.dir *= -1;
+  else { saSearchSort.col = col; saSearchSort.dir = -1; }
+  renderSearchTable();
+}
+
+function renderSearchTable() {
+  if (!saSearchCombos.length) {
+    document.getElementById('sa-results').innerHTML = '<p style="color:#888;font-size:13px">No combinations found for this level.</p>';
+    return;
+  }
+  const { col, dir } = saSearchSort;
+  const sorted = [...saSearchCombos].sort((a, b) => dir * ((b[col] ?? 0) - (a[col] ?? 0)));
+  const cols = [
+    { key: 'loudness_p95', label: 'loudness p95', tip: 'Total variation of the standardized path (σ) — how much movement overall' },
+    { key: 'net_p95',      label: 'net p95',      tip: 'Magnitude of net displacement (σ) — how much directional movement vs. oscillation' },
+    { key: 'trend_p95',    label: 'trend p95',    tip: 'Trendiness ρ = net ÷ loudness (0 = pure oscillation · 1 = clean directional trend)' },
+  ];
+  const thSort = k => {
+    const active = col === k;
+    const arrow = active ? (dir < 0 ? ' ▼' : ' ▲') : ' ⇅';
+    return `<th class="num sa-sort-th${active ? ' sa-sort-active' : ''}" onclick="sortSearchBy('${k}')" title="${cols.find(c=>c.key===k)?.tip||''}" style="cursor:pointer">${cols.find(c=>c.key===k)?.label||k}${arrow}</th>`;
+  };
+  const body = sorted.slice(0, 30).map((c, i) => `<tr class="cd-row-click" onclick="openSearchDetail(${saSearchCombos.indexOf(c)})">
       <td class="num">${i + 1}</td>
       <td class="sa-mono">${c.signals.map(saSig).join('  +  ')}</td>
-      <td class="num"><b>${c.loudness_p95.toFixed(2)}</b></td>
-      <td class="num">${c.max_loudness.toFixed(2)}</td>
-      <td>${c.top_regions.join(', ')}</td></tr>`).join('');
-  out.innerHTML = `<table class="sa-table"><thead><tr>
-      <th class="num">#</th><th title="Click any row to drill into charts for the top entities">composite (signals combined) · click for detail</th>
-      <th class="num" title="How loud its loudest regions get (95th pctl of composite loudness)">loudness p95</th>
-      <th class="num">max</th><th>loudest regions</th>
+      ${cols.map(({key}) => `<td class="num${col===key?' sa-sort-active':''}">${(c[key]??0).toFixed(2)}</td>`).join('')}
+      <td class="num">${(c.max_loudness??0).toFixed(2)}</td>
+      <td style="color:#888;font-size:11px">${(c.top_regions||[]).join(', ')}</td></tr>`).join('');
+  document.getElementById('sa-results').innerHTML = `<table class="sa-table"><thead><tr>
+      <th class="num">#</th>
+      <th title="Click any row for per-entity charts and interpretation">combo · click for detail</th>
+      ${thSort('loudness_p95')}${thSort('net_p95')}${thSort('trend_p95')}
+      <th class="num">max</th><th>loudest entities</th>
     </tr></thead><tbody>${body}</tbody></table>`;
 }
 
@@ -2574,6 +2612,40 @@ function openComposeDetail(i) {
      ${MAD_HTML}`);
 }
 
+function renderDetailEntities() {
+  const sigIds = saDetailSigs;
+  const sorted = [...saDetailRows].sort((a, b) => {
+    if (saDetailSort === 'net')   return (b.composite_net   ?? 0) - (a.composite_net   ?? 0);
+    if (saDetailSort === 'trend') return (b.composite_trend ?? 0) - (a.composite_trend ?? 0);
+    return (b.composite_loudness ?? 0) - (a.composite_loudness ?? 0);
+  });
+  const blocks = sorted.slice(0, 8).map((row, ri) => {
+    const cards = sigIds.map(sid => sigCard(sid, row.contrib)).join('');
+    const [vc, vt] = verdictBadge(row.contrib, sigIds);
+    const net   = (row.composite_net   ?? 0).toFixed(2);
+    const trend = ((row.composite_trend ?? 0) * 100).toFixed(0);
+    return `<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 12px;margin-bottom:10px">
+      <div style="font-weight:600;font-size:12px;margin-bottom:5px">#${ri+1} · ${row.region}
+        <span style="font-weight:400;color:#888"> · loud <b>${(row.composite_loudness??0).toFixed(2)}σ</b>
+          · net <b>${net}σ</b> · trend <b>${trend}%</b></span>
+        <span class="cd-verdict ${vc}" style="font-size:11px;padding:2px 8px;margin-left:8px">${vt}</span>
+      </div>
+      <div class="cd-grid">${cards}</div>
+      <ul class="cd-meanings" style="margin-top:5px">${businessInterpretation(row.contrib, sigIds).map(b => `<li>${b}</li>`).join('')}</ul>
+    </div>`;
+  }).join('');
+  document.getElementById('sa-detail-entities').innerHTML = blocks;
+}
+
+function sortDetailBy(col) {
+  saDetailSort = col;
+  ['loudness','net','trend'].forEach(c => {
+    const el = document.getElementById('sa-dsort-' + c);
+    if (el) el.classList.toggle('active', c === col);
+  });
+  renderDetailEntities();
+}
+
 async function openSearchDetail(i) {
   const combo = saSearchCombos[i];
   if (!combo) return;
@@ -2583,25 +2655,19 @@ async function openSearchDetail(i) {
   try { d = await (await fetch(`/api/report/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${combo.signals.join(',')}`)).json(); }
   catch (e) { openInfo('Search detail', '<div class="sig-error">Request failed.</div>'); return; }
   if (d.error) { openInfo('Search detail', `<div class="sig-error">${d.error}</div>`); return; }
-  // Already sorted loudest-first by the API; show top 5.
-  const topRows = (d.rows || []).slice(0, 5);
-  const entityBlocks = topRows.map((row, ri) => {
-    const sigIds = combo.signals;
-    const cards = sigIds.map(sid => sigCard(sid, row.contrib)).join('');
-    const [vc, vt] = verdictBadge(row.contrib, sigIds);
-    return `<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 12px;margin-bottom:10px">
-      <div style="font-weight:600;font-size:12px;margin-bottom:6px">#${ri + 1} · ${row.region}
-        <span style="font-weight:400;color:#888"> · ${row.composite_loudness.toFixed(2)} σ</span>
-        <span class="cd-verdict ${vc}" style="font-size:11px;padding:2px 8px;margin-left:8px">${vt}</span>
-      </div>
-      <div class="cd-grid">${cards}</div>
-      <ul class="cd-meanings" style="margin-top:5px">${businessInterpretation(row.contrib, sigIds).map(b => `<li>${b}</li>`).join('')}</ul>
-    </div>`;
-  }).join('');
-  openInfo(`${combo.signals.map(saSig).join(' + ')} · top ${topRows.length} of ${d.rows.length} entities`,
-    `<div class="info-note">Sorted by composite loudness · p95 <b>${combo.loudness_p95.toFixed(2)} σ</b> · max <b>${combo.max_loudness.toFixed(2)} σ</b></div>
-     ${entityBlocks}
+  saDetailRows = d.rows || [];
+  saDetailSigs = combo.signals;
+  saDetailSort = 'loudness';
+  const sortBtns = ['loudness','net','trend'].map(c =>
+    `<button id="sa-dsort-${c}" class="btn small${c==='loudness'?' active':''}" onclick="sortDetailBy('${c}')" style="margin-right:4px">${c}</button>`).join('');
+  openInfo(`${combo.signals.map(saSig).join(' + ')} · ${d.rows.length} entities`,
+    `<div class="info-note" style="margin-bottom:8px">
+       p95 loudness <b>${combo.loudness_p95.toFixed(2)} σ</b> · net <b>${(combo.net_p95??0).toFixed(2)} σ</b> · trend <b>${((combo.trend_p95??0)*100).toFixed(0)}%</b>
+       &nbsp;·&nbsp; Sort by: ${sortBtns}
+     </div>
+     <div id="sa-detail-entities"></div>
      ${MAD_HTML}`);
+  renderDetailEntities();
 }
 
 /* ── Findings tab ── */
