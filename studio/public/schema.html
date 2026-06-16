@@ -1683,8 +1683,8 @@ const SIG_DEFS = {
   'Trajectory (oldest→now)': 'The metric’s values across the signal window — oldest period on the left, now on the right.',
   'V': 'Magnitude V = Σ|step deltas| — total variation (loudness) of the trajectory, in pp (≥0). How much it moved in total, regardless of direction.',
   'net': 'Net D = value_now − value_start (signed sum of steps). Direction: + = improving, − = deteriorating (per the signal’s higher-is-better convention).',
-  'consistency': 'Consistency = net ÷ loudness, range −1 to +1. How directional the movement is: +1 or −1 = perfectly clean trend (no reversals); 0 = loud oscillation that goes nowhere net. Same formula as the Kaufman Efficiency Ratio.',
-  'shape': 'Trajectory shape derived from loudness and consistency: trend (loud + consistent), unstable (loud + incoherent), quiet (little movement), mixed (partial direction).',
+  'ker': 'KER (Kaufman Efficiency Ratio) = net ÷ loudness, range −1 to +1. How directional the movement is: +1 or −1 = perfectly clean trend (no reversals); 0 = loud oscillation that goes nowhere net.',
+  'shape': 'Trajectory shape derived from loudness and KER: trend (loud + consistent), unstable (loud + incoherent), quiet (little movement), mixed (partial direction).',
   'rank': 'Materiality: NTILE percentile of sales within brand × period (100 = largest region). Feeds relevance, not strength.',
   'relevance': 'Extrinsic importance = Materiality × Loudness × Horizon (band + score). Does this loud signal land somewhere worth acting on? Separate from strength.'
 };
@@ -1993,7 +1993,7 @@ function renderSignals() {
     ...dlKeys.map(dCol),
     { label: 'V', def: SIG_DEFS['V'], num: true, group: 'intrinsic', key: r => r.strength.magnitude, cell: r => r.strength.magnitude.toFixed(2) },
     { label: 'net', def: SIG_DEFS['net'], num: true, group: 'intrinsic', key: r => r.strength.net, cell: r => signed(r.strength.net) },
-    { label: 'consistency', def: SIG_DEFS['consistency'], num: true, group: 'intrinsic', key: r => r.strength.coherence, cell: r => signed(r.strength.coherence) },
+    { label: 'KER', def: SIG_DEFS['ker'], num: true, group: 'intrinsic', key: r => r.strength.coherence, cell: r => signed(r.strength.coherence) },
     { label: 'shape', def: SIG_DEFS['shape'], group: 'intrinsic', key: r => SHAPE_ORDER[r.strength.shape] ?? -1, cell: r => `<span class="pill shape-${r.strength.shape}">${r.strength.shape}</span>` },
     { label: 'rank', def: SIG_DEFS['rank'], num: true, group: 'extrinsic', key: r => r.mat_rank, cell: r => r.mat_rank },
     { label: 'relevance', def: SIG_DEFS['relevance'], num: true, group: 'extrinsic', key: r => r.relevance.score, cell: r => `<span class="rel-${r.relevance.band}">${r.relevance.band} (${r.relevance.score})</span>` },
@@ -2101,7 +2101,7 @@ let siganInited = false, saMode = 'loud', saData = null;
 let saLevel = 'region', saComposeRows = [], saSearchCombos = [], saComposeSignals = [];
 let saSearchData = null;   // raw search API response
 let saSearchSort = { col: 'loudness_p95', dir: -1 };   // -1 = desc
-let saDetailRows = [], saDetailSigs = [], saDetailSort = 'loudness';  // loudness | net | consistency
+let saDetailRows = [], saDetailSigs = [], saDetailSort = 'loudness';  // loudness | net | KER
 const SA_INTERP = {};    // signal id -> curated interpretation (for tooltips)
 const SA_SIG_META = {};  // signal id -> full META.signals entry {metric, direction, level, …}
 const SA_TAG = {
@@ -2265,7 +2265,7 @@ function renderSaLoud() {
       <td class="num">${r.loudness.toFixed(2)}</td>
       <td class="num">${saPct(r.vs_peers)}</td>
       <td class="num">${saZ(r.vs_self)}</td>
-      <td class="num">${signed(r.consistency, 2)}</td>
+      <td class="num">${signed(r.ker, 2)}</td>
       <td>${r.shape}</td>
       <td style="white-space:normal;max-width:340px;color:#555">${r.read}</td></tr>`).join('');
   document.getElementById('sa-results').innerHTML = `<table class="sa-table">
@@ -2275,7 +2275,7 @@ function renderSaLoud() {
       <th class="num" title="Intrinsic loudness V = Σ|step deltas|, raw metric units">loudness</th>
       <th class="num" title="Cross-sectional: percentile of V among all regions this month (metric-comparable)">vs peers</th>
       <th class="num" title="Robust z of current V vs this region's own past V (median+MAD). High = calm historically.">vs self</th>
-      <th class="num" title="Consistency = net ÷ loudness. +1 or −1 = perfectly directional (clean trend); 0 = loud movement that nets to zero (oscillation)">consistency</th>
+      <th class="num" title="KER (Kaufman Efficiency Ratio) = net ÷ loudness. +1 or −1 = perfectly directional (clean trend); 0 = loud movement that nets to zero (oscillation)">KER</th>
       <th>shape</th>
       <th title="Plain-language read: direction + shape + how loud vs peers/its own history">interpretation</th>
     </tr></thead><tbody>${body}</tbody></table>`;
@@ -2358,7 +2358,7 @@ function renderSearchTable() {
   const cols = [
     { key: 'loudness_p95', label: 'loudness p95', tip: 'Total variation of the standardized path (σ) — how much movement overall' },
     { key: 'net_p95',      label: 'net p95',      tip: 'Magnitude of net displacement (σ) — how much directional movement vs. oscillation' },
-    { key: 'consistency_p95', label: 'consistency p95', tip: 'Consistency = net ÷ loudness (0 = oscillation that nets to zero · 1 = clean directional trend with no reversals)' },
+    { key: 'ker_p95', label: 'KER p95', tip: 'KER (Kaufman Efficiency Ratio) = net ÷ loudness (0 = oscillation that nets to zero · 1 = clean directional trend with no reversals)' },
   ];
   const thSort = k => {
     const active = col === k;
@@ -2374,7 +2374,7 @@ function renderSearchTable() {
   document.getElementById('sa-results').innerHTML = `<table class="sa-table"><thead><tr>
       <th class="num">#</th>
       <th title="Click any row for per-entity charts and interpretation">combo · click for detail</th>
-      ${thSort('loudness_p95')}${thSort('net_p95')}${thSort('consistency_p95')}
+      ${thSort('loudness_p95')}${thSort('net_p95')}${thSort('ker_p95')}
       <th class="num">max</th><th>loudest entities</th>
     </tr></thead><tbody>${body}</tbody></table>`;
 }
@@ -2616,18 +2616,18 @@ function renderDetailEntities() {
   const sigIds = saDetailSigs;
   const sorted = [...saDetailRows].sort((a, b) => {
     if (saDetailSort === 'net')         return (b.composite_net         ?? 0) - (a.composite_net         ?? 0);
-    if (saDetailSort === 'consistency') return (b.composite_consistency ?? 0) - (a.composite_consistency ?? 0);
+    if (saDetailSort === 'ker') return (b.composite_ker ?? 0) - (a.composite_ker ?? 0);
     return (b.composite_loudness ?? 0) - (a.composite_loudness ?? 0);
   });
   const blocks = sorted.slice(0, 8).map((row, ri) => {
     const cards = sigIds.map(sid => sigCard(sid, row.contrib)).join('');
     const [vc, vt] = verdictBadge(row.contrib, sigIds);
     const net   = (row.composite_net   ?? 0).toFixed(2);
-    const consistency = ((row.composite_consistency ?? 0) * 100).toFixed(0);
+    const KER = ((row.composite_ker ?? 0) * 100).toFixed(0);
     return `<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 12px;margin-bottom:10px">
       <div style="font-weight:600;font-size:12px;margin-bottom:5px">#${ri+1} · ${row.region}
         <span style="font-weight:400;color:#888"> · loud <b>${(row.composite_loudness??0).toFixed(2)}σ</b>
-          · net <b>${net}σ</b> · consistency <b>${consistency}%</b></span>
+          · net <b>${net}σ</b> · KER <b>${KER}%</b></span>
         <span class="cd-verdict ${vc}" style="font-size:11px;padding:2px 8px;margin-left:8px">${vt}</span>
       </div>
       <div class="cd-grid">${cards}</div>
@@ -2639,7 +2639,7 @@ function renderDetailEntities() {
 
 function sortDetailBy(col) {
   saDetailSort = col;
-  ['loudness','net','consistency'].forEach(c => {
+  ['loudness','net','ker'].forEach(c => {
     const el = document.getElementById('sa-dsort-' + c);
     if (el) el.classList.toggle('active', c === col);
   });
@@ -2658,11 +2658,11 @@ async function openSearchDetail(i) {
   saDetailRows = d.rows || [];
   saDetailSigs = combo.signals;
   saDetailSort = 'loudness';
-  const sortBtns = ['loudness','net','consistency'].map(c =>
+  const sortBtns = ['loudness','net','ker'].map(c =>
     `<button id="sa-dsort-${c}" class="btn small${c==='loudness'?' active':''}" onclick="sortDetailBy('${c}')" style="margin-right:4px">${c}</button>`).join('');
   openInfo(`${combo.signals.map(saSig).join(' + ')} · ${d.rows.length} entities`,
     `<div class="info-note" style="margin-bottom:8px">
-       p95 loudness <b>${combo.loudness_p95.toFixed(2)} σ</b> · net <b>${(combo.net_p95??0).toFixed(2)} σ</b> · consistency <b>${((combo.consistency_p95??0)*100).toFixed(0)}%</b>
+       p95 loudness <b>${combo.loudness_p95.toFixed(2)} σ</b> · net <b>${(combo.net_p95??0).toFixed(2)} σ</b> · KER <b>${((combo.ker_p95??0)*100).toFixed(0)}%</b>
        &nbsp;·&nbsp; Sort by: ${sortBtns}
      </div>
      <div id="sa-detail-entities"></div>
@@ -2697,7 +2697,7 @@ function closeInfo() { document.getElementById('info-modal').classList.remove('o
 function showSignalSQL() {
   if (!sigData) return;
   const html =
-    `<div class="info-note">The Signals table is computed <strong>live</strong> by this window query (<code>LAG/OVER</code> over <code>region_metrics</code>) — no precomputed signal values. Strength (loudness / net / consistency) and relevance are then derived per row in <code>knowledge.py</code>.</div>` +
+    `<div class="info-note">The Signals table is computed <strong>live</strong> by this window query (<code>LAG/OVER</code> over <code>region_metrics</code>) — no precomputed signal values. Strength (loudness / net / KER) and relevance are then derived per row in <code>knowledge.py</code>.</div>` +
     `<div class="info-pre">${escapeHtml(sigData.sql)}</div>` +
     `<div class="info-note"><strong>What it means:</strong> ${sigData.interpretation || ''}</div>`;
   openInfo('Signal query · ' + sigData.signal, html);
@@ -2904,7 +2904,7 @@ const HDEFS = {
   'MS shape': 'Shape of the market-share trajectory (MAT, last 4 months): trend / unstable / mixed / quiet.',
   'growth shape': 'Shape of the growth-deviation trajectory (MAT, last 4 months): trend / unstable / mixed / quiet.',
   'MS traj.': 'Market-share deviation (MAT) at the last four months: 3 months ago → now (left to right).',
-  'V': SIG_DEFS['V'], 'net': SIG_DEFS['net'], 'consistency': SIG_DEFS['consistency'], 'shape': SIG_DEFS['shape'],
+  'V': SIG_DEFS['V'], 'net': SIG_DEFS['net'], 'ker': SIG_DEFS['ker'], 'shape': SIG_DEFS['shape'],
 };
 function th(h) { return HDEFS[h] ? `<th class="has-def" title="${HDEFS[h]}">${h}</th>` : `<th>${h}</th>`; }
 
@@ -3181,7 +3181,7 @@ function renderCeo(allRows) {
         <h3>🧩 Tier 4 · Finding</h3>
         <p>Open-ended <strong>composition</strong> of any lower facts — usually several signals. Rarely just one.</p>
         <p style="margin-top:6px"><em>"Growth recovering AND competition vanishing AND now meeting forecast."</em></p>
-        <p>A Finding <em>is</em> a <strong>composite signal</strong>: stack N signals into one N-D point. Strength (loudness / net / consistency) lifts to N-space. A quiet drift on many axes, all the wrong way, is a <strong>loud composite</strong>. Human defines the composite; the platform scans where it's loud.</p>
+        <p>A Finding <em>is</em> a <strong>composite signal</strong>: stack N signals into one N-D point. Strength (loudness / net / KER) lifts to N-space. A quiet drift on many axes, all the wrong way, is a <strong>loud composite</strong>. Human defines the composite; the platform scans where it's loud.</p>
       </div>
 
       <div class="framework-block">
@@ -3202,7 +3202,7 @@ function renderCeo(allRows) {
           <li><strong>Net</strong> D = now − start — direction (signed)</li>
           <li><strong>Consistency</strong> = net ÷ loudness, range −1 to +1 — how directional vs. oscillating</li>
         </ul>
-        <p>Loudness=20, consistency=0 → <strong>Unstable</strong> (−10+10=0 hides the swing). Keep all three.</p>
+        <p>Loudness=20, KER=0 → <strong>Unstable</strong> (−10+10=0 hides the swing). Keep all three.</p>
       </div>
 
       <div class="framework-block">
@@ -3237,10 +3237,10 @@ function renderCeo(allRows) {
         <h3>🔗 E2E Insight Lineage — Real Example (BE Burgdorf · Oncleris · MAT)</h3>
         <p>Tracing one region from raw signal through Finding to Insight. All values are live-computed.</p>
 
-        <div class="fw-signal-row">Signal A — mshare_deviation (MAT, −3m→now): [−0.87, −1.63, −2.40, −2.76] pp &nbsp;·&nbsp; loudness=1.89 &nbsp;·&nbsp; consistency=−1.00 &nbsp;·&nbsp; shape=<strong>trend</strong></div>
-        <div class="fw-signal-row">Signal B — growth_deviation (MAT, −3m→now): [+6.33, +1.47, −3.49, −4.82] pp &nbsp;·&nbsp; loudness=11.15 &nbsp;·&nbsp; consistency=−1.00 &nbsp;·&nbsp; shape=<strong>trend</strong></div>
+        <div class="fw-signal-row">Signal A — mshare_deviation (MAT, −3m→now): [−0.87, −1.63, −2.40, −2.76] pp &nbsp;·&nbsp; loudness=1.89 &nbsp;·&nbsp; KER=−1.00 &nbsp;·&nbsp; shape=<strong>trend</strong></div>
+        <div class="fw-signal-row">Signal B — growth_deviation (MAT, −3m→now): [+6.33, +1.47, −3.49, −4.82] pp &nbsp;·&nbsp; loudness=11.15 &nbsp;·&nbsp; KER=−1.00 &nbsp;·&nbsp; shape=<strong>trend</strong></div>
 
-        <p style="margin-top:8px">Both axes consistency=−1.0 — perfectly directional, no reversal on either. The composite: <strong>losing_both</strong>, severity <strong>6/6 critical</strong> (ms_sev=3 + growth_sev=3). This is what a composite signal adds: neither axis alone is maximally alarming; together, both deteriorating loudly at once, is the worst possible state.</p>
+        <p style="margin-top:8px">Both axes KER=−1.0 — perfectly directional, no reversal on either. The composite: <strong>losing_both</strong>, severity <strong>6/6 critical</strong> (ms_sev=3 + growth_sev=3). This is what a composite signal adds: neither axis alone is maximally alarming; together, both deteriorating loudly at once, is the worst possible state.</p>
 
         <p style="margin-top:10px"><strong>Five ways to surface this as an Insight</strong> — same data, different register:</p>
 
@@ -3250,7 +3250,7 @@ function renderCeo(allRows) {
         </div>
         <div class="fw-voice">
           <div class="fw-voice-label">2 · Signal-aware</div>
-          <p class="fw-voice-text">"BE Burgdorf has been sliding straight down on both axes for three months without a single reversal. Share went from −0.87pp to −2.76pp — perfectly directional, consistency=−1.0, meaning zero reversals. Growth flipped from +6pp above peers to −5pp below: an 11pp swing, also uninterrupted. Both deteriorating loudly at the same time. This is not a bad month — it's a pattern."</p>
+          <p class="fw-voice-text">"BE Burgdorf has been sliding straight down on both axes for three months without a single reversal. Share went from −0.87pp to −2.76pp — perfectly directional, KER=−1.0, meaning zero reversals. Growth flipped from +6pp above peers to −5pp below: an 11pp swing, also uninterrupted. Both deteriorating loudly at the same time. This is not a bad month — it's a pattern."</p>
         </div>
         <div class="fw-voice">
           <div class="fw-voice-label">3 · Plain business English</div>
@@ -3262,7 +3262,7 @@ function renderCeo(allRows) {
         </div>
         <div class="fw-voice">
           <div class="fw-voice-label">5 · Rough, rude and honest</div>
-          <p class="fw-voice-text">"Burgdorf was the star pupil three months ago (+6pp growth), and has since driven straight off a cliff. Share down every month, growth turned negative, consistency=−1 — meaning it hasn't even had a <em>bad day</em>, just a steady unbroken descent. If this were a stock you'd have stopped out weeks ago. Whatever is happening there, it is not fixing itself."</p>
+          <p class="fw-voice-text">"Burgdorf was the star pupil three months ago (+6pp growth), and has since driven straight off a cliff. Share down every month, growth turned negative, KER=−1 — meaning it hasn't even had a <em>bad day</em>, just a steady unbroken descent. If this were a stock you'd have stopped out weeks ago. Whatever is happening there, it is not fixing itself."</p>
         </div>
       </div>
 

@@ -173,7 +173,7 @@ export function analyzeSignal(sigId: string, sig: SignalTemplate, brand: string,
     const row: AnalysisRow = {
       region, rank: rk, series: series.map(x => round(x, 2)),
       loudness: round(Vnow, 3), net_change: st.net,
-      consistency: st.coherence, shape: st.shape,
+      ker: st.coherence, shape: st.shape,
       direction: st.direction,
       vs_self: vsSelf == null ? null : round(vsSelf, 2),
       vs_peers: 0,
@@ -296,11 +296,11 @@ function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
     const netVec = (perStep ?? []).reduce<number[]>((acc, vec) =>
       acc.length ? acc.map((v, j) => v + vec[j]) : [...vec], [])
     const compNet = round(Math.sqrt(netVec.reduce((x, s) => x + s * s, 0)), 3)
-    // Consistency = net / loudness (0 = oscillation with no net move, 1 = clean directional trend)
-    const compConsistency = round(compV > 0 ? compNet / compV : 0, 3)
+    // KER (Kaufman Efficiency Ratio) = net / loudness (0 = oscillation, 1 = clean directional trend)
+    const compKer = round(compV > 0 ? compNet / compV : 0, 3)
     rows.push({
       region: rg, composite_loudness: round(compV, 3),
-      composite_net: compNet, composite_consistency: compConsistency,
+      composite_net: compNet, composite_ker: compKer,
       contrib, read: interpretComposite(compV, contrib),
     })
   }
@@ -361,7 +361,7 @@ export function search(brandParam?: string, asofParam?: string, maxK = 3, summar
           signals: combo, size: k,
           loudness_p95: pct(rows.map(r => r.composite_loudness as number)),
           net_p95:      pct(rows.map(r => r.composite_net     as number)),
-          consistency_p95: pct(rows.map(r => r.composite_consistency as number)),
+          ker_p95: pct(rows.map(r => r.composite_ker as number)),
           max_loudness: rows[0].composite_loudness,
           top_regions: rows.slice(0, 3).map(r => r.region),
         })
