@@ -2101,6 +2101,7 @@ let siganInited = false, saMode = 'loud', saData = null;
 let saLevel = 'region', saComposeRows = [], saSearchCombos = [], saComposeSignals = [];
 let saSearchData = null;   // raw search API response
 let saSearchSort = { col: 'loudness_p95', dir: -1 };   // -1 = desc
+let saComposeSort = { col: 'composite_loudness', dir: -1 };   // -1 = desc
 let saDetailRows = [], saDetailSigs = [], saDetailSort = 'loudness';  // loudness | net | KER
 const SA_INTERP = {};    // signal id -> curated interpretation (for tooltips)
 const SA_SIG_META = {};  // signal id -> full META.signals entry {metric, direction, level, …}
@@ -2275,7 +2276,7 @@ function renderSaLoud() {
       <th class="num" title="Intrinsic loudness V = Σ|step deltas|, raw metric units">loudness</th>
       <th class="num" title="Cross-sectional: percentile of V among all regions this month (metric-comparable)">vs peers</th>
       <th class="num" title="Robust z of current V vs this region's own past V (median+MAD). High = calm historically.">vs self</th>
-      <th class="num" title="KER (Kaufman Efficiency Ratio) = net ÷ loudness. +1 or −1 = perfectly directional (clean trend); 0 = loud movement that nets to zero (oscillation)">KER</th>
+      <th class="num" title="KER (Kaufman Efficiency Ratio) = net ÷ loudness, range −1 to +1. +1 = clean improving trend; −1 = clean deteriorating trend; 0 = loud oscillation that nets to zero.">KER</th>
       <th>shape</th>
       <th title="Plain-language read: direction + shape + how loud vs peers/its own history">interpretation</th>
     </tr></thead><tbody>${body}</tbody></table>`;
@@ -2306,20 +2307,46 @@ async function runSaCompose() {
   saComposeSignals = sigs;
   document.getElementById('sa-meta').textContent =
     `${d.brand} · as-of ${d.asof} · composite of ${sigs.length} signals · ${d.rows.length} entities · standardized (σ) units`;
-  const arrow = dir => dir === 'improving' ? '<span class="pos">▲</span>'
-    : dir === 'deteriorating' ? '<span class="neg">▼</span>' : '·';
-  const body = d.rows.slice(0, 40).map((r, i) => {
+  renderComposeTable();
+}
+
+function sortComposeBy(col) {
+  if (saComposeSort.col === col) saComposeSort.dir *= -1;
+  else { saComposeSort.col = col; saComposeSort.dir = (col === 'composite_loudness' ? -1 : 1); }
+  renderComposeTable();
+}
+
+function renderComposeTable() {
+  const out = document.getElementById('sa-results');
+  const { col, dir } = saComposeSort;
+  // sort a copy but keep original indices so the detail popup opens the right row
+  const order = saComposeRows.map((r, i) => i)
+    .sort((a, b) => dir * ((saComposeRows[b][col] ?? 0) - (saComposeRows[a][col] ?? 0)));
+  const arrow = d => d === 'improving' ? '<span class="pos">▲</span>'
+    : d === 'deteriorating' ? '<span class="neg">▼</span>' : '·';
+  const signed = v => `<b style="color:${(v ?? 0) < 0 ? '#c0392b' : '#1e8449'}">${(v ?? 0).toFixed(2)}</b>`;
+  const body = order.slice(0, 40).map((oi, i) => {
+    const r = saComposeRows[oi];
     const contrib = Object.entries(r.contrib)
       .map(([k, v]) => `${saSig(k)} ${v.loudness.toFixed(1)}${arrow(v.dir)}`).join(' · ');
-    return `<tr class="cd-row-click" onclick="openComposeDetail(${i})">
+    return `<tr class="cd-row-click" onclick="openComposeDetail(${oi})">
       <td class="num">${i + 1}</td><td>${r.region}</td>
-      <td class="num"><b>${r.composite_loudness.toFixed(2)}</b></td>
+      <td class="num${col==='composite_loudness'?' sa-sort-active':''}"><b>${r.composite_loudness.toFixed(2)}</b></td>
+      <td class="num${col==='composite_net'?' sa-sort-active':''}">${signed(r.composite_net)}</td>
+      <td class="num${col==='composite_ker'?' sa-sort-active':''}">${((r.composite_ker ?? 0) * 100).toFixed(0)}%</td>
       <td class="sa-contrib">${contrib}</td>
       <td style="white-space:normal;max-width:360px;color:#555">${r.read}</td></tr>`;
   }).join('');
+  const th = (key, label, tip) => {
+    const active = col === key;
+    const ar = active ? (dir < 0 ? ' ▼' : ' ▲') : ' ⇅';
+    return `<th class="num sa-sort-th${active ? ' sa-sort-active' : ''}" onclick="sortComposeBy('${key}')" title="${tip}" style="cursor:pointer">${label}${ar}</th>`;
+  };
   out.innerHTML = `<table class="sa-table"><thead><tr>
       <th class="num">#</th><th title="Click any row to see per-signal charts and possible meanings">entity · click for detail</th>
-      <th class="num" title="Total variation of the standardized N-D trajectory">composite loudness</th>
+      ${th('composite_loudness', 'loudness', 'Total variation of the standardized N-D trajectory (σ) — how much movement overall')}
+      ${th('composite_net', 'total net', 'Additive tally of the per-signal net moves (σ): reinforcing pile on (−5 &amp; −2 → −7), opposing cancel (−5 &amp; +5 → 0). Sort ascending for most-deteriorating entities.')}
+      ${th('composite_ker', 'KER', 'Directionality −100%…+100%: how cleanly the movement trends. +100% = clean improving, −100% = clean deteriorating, 0 = oscillation.')}
       <th title="Each signal's own standardized movement + direction (interpret the composite)">contribution by signal</th>
       <th title="Plain-language read: reinforcing vs divergent, and the dominant driver">interpretation</th>
     </tr></thead><tbody>${body}</tbody></table>`;
@@ -2344,7 +2371,8 @@ async function runSaSearch() {
 
 function sortSearchBy(col) {
   if (saSearchSort.col === col) saSearchSort.dir *= -1;
-  else { saSearchSort.col = col; saSearchSort.dir = -1; }
+  // signed metrics default to ascending (most-negative first); loudness to descending
+  else { saSearchSort.col = col; saSearchSort.dir = /^(net_|ker_)/.test(col) ? 1 : -1; }
   renderSearchTable();
 }
 
@@ -2356,25 +2384,34 @@ function renderSearchTable() {
   const { col, dir } = saSearchSort;
   const sorted = [...saSearchCombos].sort((a, b) => dir * ((b[col] ?? 0) - (a[col] ?? 0)));
   const cols = [
-    { key: 'loudness_p95', label: 'loudness p95', tip: 'Total variation of the standardized path (σ) — how much movement overall' },
-    { key: 'net_p95',      label: 'net p95',      tip: 'Magnitude of net displacement (σ) — how much directional movement vs. oscillation' },
-    { key: 'ker_p95', label: 'KER p95', tip: 'KER (Kaufman Efficiency Ratio) = net ÷ loudness (0 = oscillation that nets to zero · 1 = clean directional trend with no reversals)' },
+    { key: 'net_total',    label: 'market net',   tip: 'Market-wide net σ for this combination: the sum of EVERY entity\'s total net (not any single entity). Reinforcing deterioration across many entities piles up; scattered/opposing moves cancel. This is a whole-population number — an individual entity in the detail can be far more negative. Sort ascending to find combinations dragging the market down.' },
+    { key: 'loudness_p95', label: 'loudness p95', tip: 'Total variation of the standardized path (σ) — how much movement overall, high end (p95) across entities' },
+    { key: 'net_worst',    label: 'net worst',    tip: 'Total net σ = additive tally of per-signal net moves (reinforcing signals pile on: −5 & −2 → −7; opposing cancel: −5 & +5 → 0). Most-negative single entity (5th pct). Sort ascending to find the combos with the worst individual entity.' },
+    { key: 'net_best',     label: 'net best',     tip: 'Total net σ = additive tally of per-signal net moves. Most-positive single entity (95th pct). Sort descending to find the combos with the best individual entity.' },
+    { key: 'ker_worst',    label: 'KER worst',    tip: 'Most-negative KER across entities (5th pct), range −1…+1. −1 = clean deteriorating trend (no reversals).' },
+    { key: 'ker_best',     label: 'KER best',     tip: 'Most-positive KER across entities (95th pct), range −1…+1. +1 = clean improving trend (no reversals).' },
   ];
   const thSort = k => {
     const active = col === k;
     const arrow = active ? (dir < 0 ? ' ▼' : ' ▲') : ' ⇅';
     return `<th class="num sa-sort-th${active ? ' sa-sort-active' : ''}" onclick="sortSearchBy('${k}')" title="${cols.find(c=>c.key===k)?.tip||''}" style="cursor:pointer">${cols.find(c=>c.key===k)?.label||k}${arrow}</th>`;
   };
+  const signedCell = v => `<span style="color:${(v ?? 0) < 0 ? '#c0392b' : '#1e8449'}">${(v ?? 0).toFixed(2)}</span>`;
   const body = sorted.slice(0, 30).map((c, i) => `<tr class="cd-row-click" onclick="openSearchDetail(${saSearchCombos.indexOf(c)})">
       <td class="num">${i + 1}</td>
       <td class="sa-mono">${c.signals.map(saSig).join('  +  ')}</td>
-      ${cols.map(({key}) => `<td class="num${col===key?' sa-sort-active':''}">${(c[key]??0).toFixed(2)}</td>`).join('')}
+      <td class="num${col==='net_total'?' sa-sort-active':''}"><b>${signedCell(c.net_total)}</b></td>
+      <td class="num${col==='loudness_p95'?' sa-sort-active':''}">${(c.loudness_p95??0).toFixed(2)}</td>
+      <td class="num${col==='net_worst'?' sa-sort-active':''}">${signedCell(c.net_worst)}</td>
+      <td class="num${col==='net_best'?' sa-sort-active':''}">${signedCell(c.net_best)}</td>
+      <td class="num${col==='ker_worst'?' sa-sort-active':''}">${signedCell(c.ker_worst)}</td>
+      <td class="num${col==='ker_best'?' sa-sort-active':''}">${signedCell(c.ker_best)}</td>
       <td class="num">${(c.max_loudness??0).toFixed(2)}</td>
       <td style="color:#888;font-size:11px">${(c.top_regions||[]).join(', ')}</td></tr>`).join('');
   document.getElementById('sa-results').innerHTML = `<table class="sa-table"><thead><tr>
       <th class="num">#</th>
       <th title="Click any row for per-entity charts and interpretation">combo · click for detail</th>
-      ${thSort('loudness_p95')}${thSort('net_p95')}${thSort('ker_p95')}
+      ${thSort('net_total')}${thSort('loudness_p95')}${thSort('net_worst')}${thSort('net_best')}${thSort('ker_worst')}${thSort('ker_best')}
       <th class="num">max</th><th>loudest entities</th>
     </tr></thead><tbody>${body}</tbody></table>`;
 }
@@ -2558,12 +2595,70 @@ function businessInterpretation(contrib, sigIds) {
 }
 
 const MAD_HTML = `<div class="cd-mad">
-  <b>What is MAD?</b> Before compositing, each metric is standardized by its own <b>step-scale</b>: the
-  <b>Median Absolute Deviation (MAD)</b> of one-month changes, pooled over all brands and entities at this grain.
-  MAD is a robust measure of a typical monthly move — unlike standard deviation it ignores extremes.
-  A 1-MAD step in a 1–100 rank and a 1-MAD step in a ±15 pp deviation count <em>equally</em> in the composite,
-  so differently-scaled metrics are truly addable. Composite loudness is in <b>σ units</b>, making values
-  comparable across any metric combination.
+  <b>How "std net" is computed — one example, start to finish</b>
+  <p style="margin:6px 0">Goal: turn a recent move into a number that says <em>"how big is this versus a normal month?"</em>
+  We follow one signal — <code>mshare_deviation</code> at <b>VS Montana</b> (Cardolux) — all the way through.
+  Two different stretches of history are used, and keeping them straight is the whole trick:</p>
+
+  <div style="background:#f7f7f5;border-radius:6px;padding:8px 10px;margin:6px 0">
+    <div style="font-weight:600;margin-bottom:2px">① The recent move — uses the last 4 months only</div>
+    The signal's window at this as-of is the last 4 monthly readings:
+    <div style="font-family:monospace;margin:3px 0">−0.42&nbsp; → &nbsp;1.45&nbsp; → &nbsp;−0.81&nbsp; → &nbsp;−1.88&nbsp;&nbsp;(pp, oldest→now)</div>
+    The <b>net</b> is simply now − oldest — the bumps in between cancel out (they "telescope"):
+    <div style="font-family:monospace;margin:3px 0">net = −1.88 − (−0.42) = <b style="color:#c0392b">−1.46 pp</b></div>
+    So over the last 4 months, share-deviation fell 1.46pp. But… is that a lot? We don't know yet — pp means nothing
+    on its own. That's what step ② is for.
+  </div>
+
+  <div style="background:#f7f7f5;border-radius:6px;padding:8px 10px;margin:6px 0">
+    <div style="font-weight:600;margin-bottom:2px">② The ruler (scale) — uses ALL history, not 4 months</div>
+    What's a <em>normal</em> month-to-month move for this metric? Take <b>every</b> consecutive monthly change of
+    <code>mshare_deviation</code>, pooled across every brand and region (<b>36,765</b> changes), and find the typical size:
+    <div style="font-family:monospace;margin:3px 0">med = median(Δ) = 0.00&nbsp;&nbsp;·&nbsp;&nbsp;<b>MAD = median(|Δ − med|) = 0.37 pp</b></div>
+    <b>MAD</b> (Median Absolute Deviation) = the middle-sized monthly wiggle. Robust: a few wild months don't distort it,
+    unlike standard deviation. So a "usual" month for share-deviation is about <b>±0.37 pp</b>.
+  </div>
+
+  <div style="background:#f0f6f0;border-radius:6px;padding:8px 10px;margin:6px 0">
+    <div style="font-weight:600;margin-bottom:2px">③ Standardize — divide the move by the ruler</div>
+    <div style="font-family:monospace;margin:3px 0">std net = net ÷ scale = −1.46 ÷ 0.37 = <b style="color:#c0392b">−3.95σ</b></div>
+    <b>Read it plainly:</b> this recent drop is <b>3.95× a normal month's move</b> — and downward. A big, out-of-the-ordinary
+    decline. <em>That's what std net means: how many "usual monthly moves" this recent net change is worth.</em>
+  </div>
+
+  <p style="margin:8px 0 4px"><b>Now the same thing for the other signal, and the total.</b> Each signal gets its own ruler,
+  so different metrics become addable (everything is in σ — "normal-monthly-moves" — units):</p>
+  <table class="sa-mad-tbl" style="border-collapse:collapse;font-size:11px;width:100%;margin:4px 0">
+    <thead><tr style="text-align:left;color:#666">
+      <th style="padding:2px 8px 2px 0">signal</th><th style="padding:2px 8px">last 4 months</th>
+      <th style="padding:2px 8px">net</th><th style="padding:2px 8px">scale (from all history)</th><th style="padding:2px 8px">std net = net ÷ scale</th>
+    </tr></thead>
+    <tbody>
+    <tr><td style="padding:2px 8px 2px 0"><code>mshare_deviation</code></td>
+      <td style="padding:2px 8px">−0.42 → 1.45 → −0.81 → −1.88 pp</td>
+      <td style="padding:2px 8px;color:#c0392b">−1.46 pp</td>
+      <td style="padding:2px 8px"><b>0.37</b> <span style="color:#888">(MAD of 36,765 Δ)</span></td>
+      <td style="padding:2px 8px;color:#c0392b"><b>−1.46 ÷ 0.37 = −3.95σ</b></td></tr>
+    <tr><td style="padding:2px 8px 2px 0"><code>rank_sales_eur</code></td>
+      <td style="padding:2px 8px">26 → 29 → 26 → 24</td>
+      <td style="padding:2px 8px;color:#c0392b">−2.00 ranks</td>
+      <td style="padding:2px 8px"><b>4.63</b> <span style="color:#888">(MAD=0 — 56% of months don't move — so std-dev is used)</span></td>
+      <td style="padding:2px 8px;color:#c0392b"><b>−2.00 ÷ 4.63 = −0.43σ</b></td></tr>
+    <tr style="border-top:1px solid #ddd;font-weight:600">
+      <td style="padding:3px 8px 2px 0">total net</td><td style="padding:3px 8px;color:#888">— last 4 months each —</td>
+      <td style="padding:3px 8px;color:#888">(raw units don't add)</td><td></td>
+      <td style="padding:3px 8px;color:#c0392b">−3.95 + −0.43 = <b>−4.38σ</b></td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin:6px 0"><b>The payoff.</b> Rank dropped <em>two whole positions</em> — looks dramatic — but only <b>−0.43σ</b>:
+  for rank, jumping a couple of spots is a normal month. Share moved a mere <b>−1.46 pp</b> yet that's <b>−3.95σ</b>:
+  for share-deviation, that's a rare lurch. Raw size lies; <b>std net</b> tells you how unusual the move really is, and
+  puts every metric on the same ruler so the composite total (<b>−4.38σ</b>) is meaningful.</p>
+
+  <p style="margin:6px 0;color:#777;font-size:11px"><b>Two windows, one more time:</b> the <b>net</b> is measured over the
+  <b>last 4 months</b> (a focused read of the recent move); the <b>scale</b> is measured over <b>all history</b>
+  (you need lots of data for a stable "normal move" — 3 deltas would be noise). std net divides one by the other.</p>
 </div>`;
 
 // Build a signal card with sparkline + raw series trail + metric label.
@@ -2576,12 +2671,15 @@ function sigCard(sid, contrib) {
   const arrow = c.dir === 'improving' ? '▲' : c.dir === 'deteriorating' ? '▼' : '—';
   const trail = c.series.map(v => v.toFixed(1)).join(' → ');
   const metricLabel = meta.metric ? `<div style="font-size:10px;color:#aaa;margin-bottom:3px">${meta.metric}</div>` : '';
+  const zn = c.znet ?? 0;
+  const znTxt = `${zn >= 0 ? '+' : ''}${zn.toFixed(2)}σ`;
   return `<div class="cd-sig">
     <div class="cd-sig-name">${saSig(sid)}</div>
     ${metricLabel}
     ${miniSparkline(c.series, col)}
     <div style="font-size:10px;color:#999;margin:3px 0 2px;word-break:break-all">${trail}</div>
-    <div class="cd-sig-stats" style="color:${arrowCol}">${arrow} net ${c.net >= 0 ? '+' : ''}${c.net.toFixed(2)} · ${c.dir}</div>
+    <div class="cd-sig-stats" style="color:${arrowCol}">${arrow} net ${c.net >= 0 ? '+' : ''}${c.net.toFixed(2)} (raw) · ${c.dir}</div>
+    <div class="cd-sig-stats" style="color:${arrowCol};font-weight:600" title="Standardized (MAD σ) contribution to total net — these σ values across all signals sum to the entity's total net">contributes ${znTxt} to total</div>
   </div>`;
 }
 
@@ -2615,8 +2713,10 @@ function openComposeDetail(i) {
 function renderDetailEntities() {
   const sigIds = saDetailSigs;
   const sorted = [...saDetailRows].sort((a, b) => {
-    if (saDetailSort === 'net')         return (b.composite_net         ?? 0) - (a.composite_net         ?? 0);
-    if (saDetailSort === 'ker') return (b.composite_ker ?? 0) - (a.composite_ker ?? 0);
+    // net/KER: ascending (most negative = most deteriorating first)
+    if (saDetailSort === 'net') return (a.composite_net ?? 0) - (b.composite_net ?? 0);
+    if (saDetailSort === 'ker') return (a.composite_ker ?? 0) - (b.composite_ker ?? 0);
+    // loudness: descending (most active first)
     return (b.composite_loudness ?? 0) - (a.composite_loudness ?? 0);
   });
   const blocks = sorted.slice(0, 8).map((row, ri) => {
@@ -2624,10 +2724,12 @@ function renderDetailEntities() {
     const [vc, vt] = verdictBadge(row.contrib, sigIds);
     const net   = (row.composite_net   ?? 0).toFixed(2);
     const KER = ((row.composite_ker ?? 0) * 100).toFixed(0);
+    const netColor = (row.composite_net ?? 0) < 0 ? '#c0392b' : '#1e8449';
     return `<div style="border:1px solid #e0e0e0;border-radius:6px;padding:10px 12px;margin-bottom:10px">
       <div style="font-weight:600;font-size:12px;margin-bottom:5px">#${ri+1} · ${row.region}
         <span style="font-weight:400;color:#888"> · loud <b>${(row.composite_loudness??0).toFixed(2)}σ</b>
-          · net <b>${net}σ</b> · KER <b>${KER}%</b></span>
+          · <span title="Total net: additive tally of the per-signal net moves below (reinforcing pile on, opposing cancel)">total net <b style="color:${netColor}">${net}σ</b></span>
+          · <span title="Directionality −100%…+100%: how cleanly the movement trends (uses bounded Euclidean displacement, not the additive total)">KER <b>${KER}%</b></span></span>
         <span class="cd-verdict ${vc}" style="font-size:11px;padding:2px 8px;margin-left:8px">${vt}</span>
       </div>
       <div class="cd-grid">${cards}</div>
@@ -2658,11 +2760,19 @@ async function openSearchDetail(i) {
   saDetailRows = d.rows || [];
   saDetailSigs = combo.signals;
   saDetailSort = 'loudness';
-  const sortBtns = ['loudness','net','ker'].map(c =>
-    `<button id="sa-dsort-${c}" class="btn small${c==='loudness'?' active':''}" onclick="sortDetailBy('${c}')" style="margin-right:4px">${c}</button>`).join('');
+  const sortBtnDefs = [
+    { col: 'loudness', label: 'loudness ▼', tip: 'Most active (highest loudness) first' },
+    { col: 'net',      label: 'total net ▲', tip: 'Most deteriorating first (most negative total net — additive tally of per-signal moves)' },
+    { col: 'ker',      label: 'KER ▲',      tip: 'Most deteriorating first (most negative KER — directionality)' },
+  ];
+  const sortBtns = sortBtnDefs.map(({ col, label, tip }) =>
+    `<button id="sa-dsort-${col}" class="btn small${col==='loudness'?' active':''}" onclick="sortDetailBy('${col}')" title="${tip}" style="margin-right:4px">${label}</button>`).join('');
   openInfo(`${combo.signals.map(saSig).join(' + ')} · ${d.rows.length} entities`,
     `<div class="info-note" style="margin-bottom:8px">
-       p95 loudness <b>${combo.loudness_p95.toFixed(2)} σ</b> · net <b>${(combo.net_p95??0).toFixed(2)} σ</b> · KER <b>${((combo.ker_p95??0)*100).toFixed(0)}%</b>
+       <span title="Sum of every entity's total net — a whole-market number, not any single entity below">market net <b>${(combo.net_total??0).toFixed(2)} σ</b></span>
+       · loudness p95 <b>${combo.loudness_p95.toFixed(2)} σ</b>
+       · per-entity total net <b>${(combo.net_worst??0).toFixed(2)}</b>…<b>${(combo.net_best??0).toFixed(2)} σ</b>
+       · KER <b>${((combo.ker_worst??0)*100).toFixed(0)}%</b>…<b>${((combo.ker_best??0)*100).toFixed(0)}%</b>
        &nbsp;·&nbsp; Sort by: ${sortBtns}
      </div>
      <div id="sa-detail-entities"></div>

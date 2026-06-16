@@ -278,7 +278,7 @@ function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
   const rows: Json[] = []
   for (const rg of common) {
     let perStep: number[][] | null = null
-    const contrib: Record<string, { loudness: number; dir: string; net: number; series: number[] }> = {}
+    const contrib: Record<string, { loudness: number; dir: string; net: number; znet: number; series: number[] }> = {}
     for (const sid of sigIds) {
       const { steps: z, series } = stepsBySig[sid][rg][asof]
       const hib = sigs[sid].direction === 'higher_is_better'
@@ -286,18 +286,32 @@ function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
         loudness: round(z.reduce((a, s) => a + Math.abs(s), 0), 3),
         dir: dirWord(z.reduce((a, s) => a + s, 0), hib),
         net: round(series[series.length - 1] - series[0], 2),   // raw net (metric units), oldest→now
+        znet: 0,                                                // signed σ net, filled in below (sums to composite_net)
         series: series.map(v => round(v, 2)),                   // raw trajectory for charting
       }
       if (perStep == null) perStep = z.map(s => [s])
       else z.forEach((s, i) => (perStep as number[][])[i].push(s))
     }
     const compV = (perStep ?? []).reduce((a, vec) => a + Math.sqrt(vec.reduce((x, s) => x + s * s, 0)), 0)
-    // Net displacement: magnitude of the sum of all step vectors (σ units)
+    // Per-signal net displacement, projected onto each signal's "good" direction (z units):
+    // positive = improved, negative = deteriorated.
     const netVec = (perStep ?? []).reduce<number[]>((acc, vec) =>
       acc.length ? acc.map((v, j) => v + vec[j]) : [...vec], [])
-    const compNet = round(Math.sqrt(netVec.reduce((x, s) => x + s * s, 0)), 3)
-    // KER (Kaufman Efficiency Ratio) = net / loudness (0 = oscillation, 1 = clean directional trend)
-    const compKer = round(compV > 0 ? compNet / compV : 0, 3)
+    const goodNet = sigIds.map((sid, j) =>
+      (sigs[sid].direction === 'higher_is_better' ? 1 : -1) * (netVec[j] ?? 0))
+    // Surface each signal's signed σ contribution so the per-signal cards reconcile with the
+    // total: Σ znet == composite_net exactly (raw `net` is in metric units and does NOT sum).
+    sigIds.forEach((sid, j) => { contrib[sid].znet = round(goodNet[j], 2) })
+    // Total net: the additive tally across signals. Reinforcing moves pile on (−5 and −2 → −7),
+    // opposing moves cancel (−5 and +5 → 0). This is the business "bottom line" of the composite.
+    // NOTE: not bounded by loudness — an L1-style sum across axes can exceed the Euclidean path
+    // length, so it can't drive KER without breaking KER's [−1,+1] range.
+    const compNet = round(goodNet.reduce((a, s) => a + s, 0), 3)
+    // KER directionality uses the Euclidean displacement magnitude ‖Σ steps‖ (always ≤ loudness),
+    // signed by the net tally. Range −1…+1: +1 = clean improving trend, −1 = clean deteriorating,
+    // 0 = loud movement that nets to nothing.
+    const netMag = Math.sqrt(goodNet.reduce((x, s) => x + s * s, 0))
+    const compKer = round(compV > 0 ? Math.sign(compNet) * netMag / compV : 0, 3)
     rows.push({
       region: rg, composite_loudness: round(compV, 3),
       composite_net: compNet, composite_ker: compKer,
@@ -353,15 +367,26 @@ export function search(brandParam?: string, asofParam?: string, maxK = 3, summar
       for (const combo of combinations(ids, k)) {
         const rows = compositeRows(combo, brand, asof)
         if (!rows.length) continue
-        const pct = (arr: number[]) => {
+        // percentile at fraction f (0=min, 1=max), over a copy sorted ascending
+        const pctAt = (arr: number[], f: number) => {
           const s = [...arr].sort((a, b) => a - b)
-          return round(s[Math.min(s.length - 1, Math.floor(s.length * summaryPctl))], 3)
+          return round(s[Math.min(s.length - 1, Math.max(0, Math.floor(s.length * f)))], 3)
         }
+        const nets = rows.map(r => r.composite_net as number)
+        const kers = rows.map(r => r.composite_ker as number)
         combos.push({
           signals: combo, size: k,
-          loudness_p95: pct(rows.map(r => r.composite_loudness as number)),
-          net_p95:      pct(rows.map(r => r.composite_net     as number)),
-          ker_p95: pct(rows.map(r => r.composite_ker as number)),
+          loudness_p95: pctAt(rows.map(r => r.composite_loudness as number), summaryPctl),
+          // Market-wide net for this signal combination: sum of every entity's total net.
+          // Captures breadth × depth — a combination where reinforcing signals push many
+          // entities the same way nets a large move; scattered/opposing moves cancel out.
+          net_total: round(nets.reduce((a, n) => a + n, 0), 3),
+          // net/KER are signed: report both tails so the search finds the
+          // best-performing (high) and the most-problematic (low) entities
+          net_best:  pctAt(nets, summaryPctl),
+          net_worst: pctAt(nets, 1 - summaryPctl),
+          ker_best:  pctAt(kers, summaryPctl),
+          ker_worst: pctAt(kers, 1 - summaryPctl),
           max_loudness: rows[0].composite_loudness,
           top_regions: rows.slice(0, 3).map(r => r.region),
         })
