@@ -265,8 +265,15 @@ function stdSteps(sig: SignalTemplate, brand: string): Record<string, Record<str
   return out
 }
 
-function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
+// Optional per-signal weights (parallel to sigIds, summing to 1). Each signal's standardized
+// steps are scaled by weight × N before the axes are combined, so equal weights (1/N each)
+// reproduce the unweighted composite exactly; a weight of 0 drops a signal, a heavier weight
+// amplifies that metric. Weights touch only the standardized geometry — the raw `net`/`series`
+// shown in the per-signal cards stay in their own metric units.
+function compositeRows(sigIds: string[], brand: string, asof: string, weights?: number[]): Json[] {
   const sigs = signalTemplates(DEFS())
+  const wf = (i: number) =>
+    (weights && weights.length === sigIds.length ? weights[i] * sigIds.length : 1)
   const stepsBySig: Record<string, Record<string, Record<string, StdEntry>>> = {}
   for (const sid of sigIds) stepsBySig[sid] = stdSteps(sigs[sid], brand)
   // entities present in every selected signal at asof
@@ -279,8 +286,11 @@ function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
   for (const rg of common) {
     let perStep: number[][] | null = null
     const contrib: Record<string, { loudness: number; dir: string; net: number; znet: number; series: number[] }> = {}
-    for (const sid of sigIds) {
-      const { steps: z, series } = stepsBySig[sid][rg][asof]
+    for (let idx = 0; idx < sigIds.length; idx++) {
+      const sid = sigIds[idx]
+      const raw = stepsBySig[sid][rg][asof]
+      const z = raw.steps.map(s => s * wf(idx))   // standardized steps, scaled by this signal's weight
+      const series = raw.series
       const hib = sigs[sid].direction === 'higher_is_better'
       contrib[sid] = {
         loudness: round(z.reduce((a, s) => a + Math.abs(s), 0), 3),
@@ -325,7 +335,36 @@ function compositeRows(sigIds: string[], brand: string, asof: string): Json[] {
   return rows
 }
 
-export function composite(sigIds: string[], brandParam?: string, asofParam?: string, topPct = 0.05): Json {
+// Percentile at fraction f (0 = min, 1 = max), over a copy sorted ascending.
+function pctAt(arr: number[], f: number): number {
+  const s = [...arr].sort((a, b) => a - b)
+  return round(s[Math.min(s.length - 1, Math.max(0, Math.floor(s.length * f)))], 3)
+}
+
+// The bundle-level scorecard for a set of composite rows. This is the single source of truth
+// for both Compose (one hand-picked bundle) and Auto-search (every bundle) — by sharing it, a
+// composed bundle and its auto-search row are identical by construction. `rows` must come from
+// compositeRows (sorted loudest-first).
+function scoreCombo(rows: Json[], sigIds: string[], summaryPctl: number): Json {
+  const nets = rows.map(r => r.composite_net as number)
+  const kers = rows.map(r => r.composite_ker as number)
+  // Synergy: how much deeper the combo's worst entity sinks than its worst single signal alone.
+  const soloWorst = sigIds.map(sid =>
+    Math.min(...rows.map(r => ((r.contrib as Record<string, { znet: number }>)[sid]?.znet ?? 0))))
+  return {
+    synergy: round(Math.min(...soloWorst) - Math.min(...nets), 3),
+    loudness_p95: pctAt(rows.map(r => r.composite_loudness as number), summaryPctl),
+    net_total: round(nets.reduce((a, n) => a + n, 0), 3),
+    net_best: pctAt(nets, summaryPctl),
+    net_worst: pctAt(nets, 1 - summaryPctl),
+    ker_best: pctAt(kers, summaryPctl),
+    ker_worst: pctAt(kers, 1 - summaryPctl),
+    max_loudness: rows[0].composite_loudness,
+  }
+}
+
+export function composite(sigIds: string[], brandParam?: string, asofParam?: string,
+  topPct = 0.05, weights?: number[]): Json {
   const sigs = signalTemplates(DEFS())
   const levels = new Set(sigIds.filter(sid => sid in sigs).map(sid => sigLevel(sigs[sid])))
   if (levels.size > 1) {
@@ -335,9 +374,13 @@ export function composite(sigIds: string[], brandParam?: string, asofParam?: str
     }
   }
   const { brand, asof } = defaultBrandAsof(brandParam, asofParam)
-  const rows = compositeRows(sigIds, brand, asof)
+  const rows = compositeRows(sigIds, brand, asof, weights)
   const k = Math.max(1, Math.floor(rows.length * topPct))
-  return { brand, asof, signals: sigIds, rows, top_loudest: rows.slice(0, k) }
+  return {
+    brand, asof, signals: sigIds, weights: weights ?? null, rows,
+    top_loudest: rows.slice(0, k),
+    summary: rows.length ? scoreCombo(rows, sigIds, 0.95) : null,
+  }
 }
 
 function* combinations<T>(arr: T[], k: number): Generator<T[]> {
@@ -367,27 +410,9 @@ export function search(brandParam?: string, asofParam?: string, maxK = 3, summar
       for (const combo of combinations(ids, k)) {
         const rows = compositeRows(combo, brand, asof)
         if (!rows.length) continue
-        // percentile at fraction f (0=min, 1=max), over a copy sorted ascending
-        const pctAt = (arr: number[], f: number) => {
-          const s = [...arr].sort((a, b) => a - b)
-          return round(s[Math.min(s.length - 1, Math.max(0, Math.floor(s.length * f)))], 3)
-        }
-        const nets = rows.map(r => r.composite_net as number)
-        const kers = rows.map(r => r.composite_ker as number)
         combos.push({
           signals: combo, size: k,
-          loudness_p95: pctAt(rows.map(r => r.composite_loudness as number), summaryPctl),
-          // Market-wide net for this signal combination: sum of every entity's total net.
-          // Captures breadth × depth — a combination where reinforcing signals push many
-          // entities the same way nets a large move; scattered/opposing moves cancel out.
-          net_total: round(nets.reduce((a, n) => a + n, 0), 3),
-          // net/KER are signed: report both tails so the search finds the
-          // best-performing (high) and the most-problematic (low) entities
-          net_best:  pctAt(nets, summaryPctl),
-          net_worst: pctAt(nets, 1 - summaryPctl),
-          ker_best:  pctAt(kers, summaryPctl),
-          ker_worst: pctAt(kers, 1 - summaryPctl),
-          max_loudness: rows[0].composite_loudness,
+          ...scoreCombo(rows, combo, summaryPctl),
           top_regions: rows.slice(0, 3).map(r => r.region),
         })
       }

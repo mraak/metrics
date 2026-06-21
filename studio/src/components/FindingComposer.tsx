@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'next/navigation'
 import type { FindingDefinition, SignalDefinition, AxisDefinition, ClassificationRule, SeverityConfig, FindingRow } from '@/lib/types'
 import Tooltip from '@/components/Tooltip'
 
@@ -82,11 +83,38 @@ export default function FindingComposer({ initialFindings, initialSignals }: Pro
   const [saving, setSaving] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
+  const searchParams = useSearchParams()
+
   useEffect(() => {
     fetch('/api/report/meta').then(r => r.json()).then((data: { brands: string[] }) => {
       setMeta(data)
       if (!brand && data.brands.length > 0) setBrand(data.brands[0])
     })
+  }, [])
+
+  // Promoted from Signal Analysis auto-search: ?promote=sig1,sig2,… pre-fills a new
+  // draft with one axis per signal. The composite the sweep surfaced IS the finding.
+  useEffect(() => {
+    const promote = searchParams.get('promote')
+    if (!promote) return
+    const ids = promote.split(',').map(s => s.trim()).filter(Boolean)
+    const valid = ids.filter(id => signals.some(s => s.id === id))
+    if (!valid.length) return
+    const axes: AxisDefinition[] = valid.map(id => ({
+      name: id, signal_id: id, good_direction: 'positive', threshold: 0,
+    }))
+    setSelected(null)
+    setClassificationLabels({})
+    setDraft({
+      name: valid.join('_'),
+      label: valid.map(id => signals.find(s => s.id === id)?.label ?? id).join(' × '),
+      axes,
+      classifications: [],
+      severity: { deterioration_delta: 0.3, bands: { critical: 5, high: 3, moderate: 2 } },
+    })
+    setRunResult(null)
+    setRunError(null)
+    setErrors({})
   }, [])
 
   // Regenerate classification combinations whenever axes change

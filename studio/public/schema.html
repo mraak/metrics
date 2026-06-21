@@ -1291,6 +1291,10 @@ body.dark-theme .c3-btn:hover { background: #1d2330; }
         <span class="signals-meta" id="sa-meta"></span>
       </div>
       <div class="signals-body">
+        <details class="sa-method" id="sa-method">
+          <summary>📖 How this works — metrics, composites &amp; a worked example</summary>
+          <div id="sa-method-body"></div>
+        </details>
         <div class="sa-desc" id="sa-desc"></div>
         <div class="signals-interp" id="sa-legend"></div>
         <div id="sa-compose-bar" hidden></div>
@@ -2099,8 +2103,10 @@ function sortBy(i) {
 /* ── Signal Analysis tab (cross-metric loudness + composites) ── */
 let siganInited = false, saMode = 'loud', saData = null;
 let saLevel = 'region', saComposeRows = [], saSearchCombos = [], saComposeSignals = [];
+let saComposeSummary = null, saComposeWeights = null;
 let saSearchData = null;   // raw search API response
-let saSearchSort = { col: 'loudness_p95', dir: -1 };   // -1 = desc
+let saSearchSort = { col: 'synergy', dir: -1 };   // -1 = desc
+let saSearchDedup = true;   // hide nested duplicates (a combo fully contained in a higher-ranked one)
 let saComposeSort = { col: 'composite_loudness', dir: -1 };   // -1 = desc
 let saDetailRows = [], saDetailSigs = [], saDetailSort = 'loudness';  // loudness | net | KER
 const SA_INTERP = {};    // signal id -> curated interpretation (for tooltips)
@@ -2169,7 +2175,43 @@ async function initSigan() {
       .sa-sort-active{color:#2266aa !important;font-weight:700}
       body.dark-theme .sa-sort-th:hover{color:#6ab4d8}
       body.dark-theme .sa-sort-active{color:#6ab4d8 !important}
-      .btn.small.active{background:#2266aa;color:#fff;border-color:#2266aa}`;
+      .btn.small.active{background:#2266aa;color:#fff;border-color:#2266aa}
+      .sa-method{border:1px solid #e5e9ee;border-radius:6px;background:#fbfcfd;margin-bottom:14px;max-width:920px}
+      body.dark-theme .sa-method{border-color:#222a38;background:#0f131b}
+      .sa-method>summary{cursor:pointer;padding:9px 13px;font-size:12.5px;font-weight:600;color:#2266aa;list-style:none}
+      .sa-method>summary::-webkit-details-marker{display:none}
+      .sa-method>summary::before{content:'▸ ';font-size:10px}
+      .sa-method[open]>summary::before{content:'▾ '}
+      body.dark-theme .sa-method>summary{color:#6ab4d8}
+      #sa-method-body{padding:0 13px 11px}
+      .sa-method-prose{font-size:12px;line-height:1.6;color:#555}
+      body.dark-theme .sa-method-prose{color:#aab}
+      .sa-method-prose h4{font-size:12px;color:#333;margin:13px 0 5px}
+      body.dark-theme .sa-method-prose h4{color:#ccd}
+      .sa-defs{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:8px 16px;margin:4px 0}
+      .sa-defs dt{font-weight:600;color:#2266aa}
+      .sa-defs dt span{font-weight:400;color:#999;font-size:10.5px}
+      body.dark-theme .sa-defs dt{color:#6ab4d8}
+      .sa-defs dd{margin:1px 0 0}
+      .sa-col-ref{list-style:none;padding:0;margin:4px 0;columns:2;column-gap:22px;font-size:11.5px}
+      .sa-col-ref li{margin:0 0 5px;break-inside:avoid}
+      .sa-col-ref b{color:#333}
+      body.dark-theme .sa-col-ref b{color:#ccd}
+      .sa-seemore{color:#2266aa;font-size:11px}
+      body.dark-theme .sa-seemore{color:#6ab4d8}
+      .cd-method-link{font-size:11px;color:#888;margin:14px 0 0;font-style:italic}
+      .sa-score{display:flex;flex-wrap:wrap;gap:7px;margin:4px 0 12px;max-width:920px}
+      .sa-score .sc{border:1px solid #e5e9ee;border-radius:6px;padding:6px 11px;min-width:88px;cursor:help}
+      body.dark-theme .sa-score .sc{border-color:#222a38;background:#0f131b}
+      .sa-score .sc .lbl{font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.03em}
+      .sa-score .sc .val{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+      .sa-score .sc.lead{border-color:#2266aa;background:#f2f7fc}
+      body.dark-theme .sa-score .sc.lead{border-color:#2e5d86;background:#0d1b2a}
+      .sa-wt{display:inline-flex;align-items:center;gap:3px;margin-left:4px}
+      .sa-wt input{width:40px;font-size:11px;padding:1px 3px;text-align:right}
+      .sa-wt input:disabled{background:#f0f0f0}
+      body.dark-theme .sa-wt input:disabled{background:#0c0f16}
+      .sa-pct{font-size:10px;color:#888;margin-left:1px}`;
     document.head.appendChild(st);
   }
   try {
@@ -2190,27 +2232,38 @@ async function initSigan() {
   const lsel = document.getElementById('sa-level');
   lsel.innerHTML = levels.map(l => `<option value="${l}">${l[0].toUpperCase() + l.slice(1)}</option>`).join('');
   if (levels.length) saLevel = levels[0];
+  const mb = document.getElementById('sa-method-body');
+  if (mb && !mb.innerHTML.trim()) mb.innerHTML = SA_METHOD_HTML;
   renderComposeBar();
   loadSigan();
 }
 
 const SA_DESC = {
-  loud: `<b>Loudest</b> ranks every <code>signal × entity</code> across <em>all</em> metrics. Loudness
-    <code>V = Σ|step deltas|</code> is kept raw in each metric's own units, so it's never compared directly —
-    instead two scale-free views are: <b>vs peers</b> (percentile of V among entities of the same metric) and
-    <b>vs self</b> (robust z of V against this entity's own past). Rows are sorted by vs-peers, then vs-self.`,
-  compose: `<b>Compose</b> fuses the checked signals into one trajectory. Each signal's monthly steps are
-    standardized by that metric's own step-scale (MAD of one-month deltas), so a 1-MAD move in a 1–100 rank and
-    a 1-MAD move in a −1…1 deviation count <em>equally</em> — this is what makes differently-scaled metrics
-    addable. Composite loudness is the total variation of the combined standardized path, in σ units. Signals
-    must share one grain (region entities and territory entities never overlap).`,
-  search: `<b>Auto-search</b> is a discovery sweep: it brute-forces every combination of <b>2–3 signals within
-    the same grain</b> (region combos, territory combos — never mixed, since their entities don't overlap),
-    builds each composite with the same MAD-standardization as Compose, and scores it. Combos are ranked by
-    <b>loudness p95</b> (how loud each bundle's loudest regions get); <b>max</b> and <b>loudest regions</b> show
-    where it fires. It finds <em>which bundles of metrics are jointly moving the most, and where</em> — not
-    correlations.`,
+  loud: `<b>Loudest</b> ranks every <code>signal × entity</code> across all metrics by raw loudness, shown two
+    scale-free ways: <b>vs peers</b> (percentile among same-metric entities) and <b>vs self</b> (robust z vs the
+    entity's own past). <span class="sa-seemore">See <b>How this works</b> above for what loudness, net and KER mean.</span>`,
+  compose: `<b>Compose</b> fuses the checked signals into one standardized trajectory and scores it with the same
+    metrics as Auto-search (the scorecard below the picker). Set <b>weights</b> to dial each signal's pull; signals
+    must share one grain. <span class="sa-seemore">See <b>How this works</b> above for the metric definitions and a worked example.</span>`,
+  search: `<b>Auto-search</b> brute-forces every 2–3-signal bundle within one grain and ranks them by <b>synergy</b> —
+    how much deeper a bundle's worst entity sinks than its worst single signal alone, i.e. <em>compounding problems
+    where several metrics pile onto the same entities</em>. Every column sorts; nested duplicates are hidden; click a
+    combo for charts, then <b>Promote to Finding</b>. <span class="sa-seemore">See <b>How this works</b> above for every metric.</span>`,
 };
+
+// Single source of truth for the bundle-level scorecard columns — shared by the Auto-search
+// table AND the Compose scorecard, so the two read identically. The same tips feed the
+// methodology panel, so a metric is documented in exactly one place.
+const SA_COLS = [
+  { key: 'synergy',      label: 'synergy',      signed: false, strong: true, tip: 'SYNERGY · Reinforcement: how much deeper the bundle\'s worst entity sinks than its worst single signal alone (σ). High = these metrics pile onto the SAME entities — 1+1 worse than the worst 1, a compounding problem invisible when you read metrics one at a time, which is exactly what combining signals exists to surface. ~0 = the bundle just tracks its worst single signal (no added concentration); negative = the signals land on different entities and partly offset.' },
+  { key: 'net_total',    label: 'market net',   signed: true,  strong: true, tip: 'NET · Market-wide net σ: the sum of EVERY entity\'s total net (not any single entity). Reinforcing deterioration across many entities piles up; scattered/opposing moves cancel. A whole-population number — an individual entity can be far more negative. Sort ascending to find bundles dragging the market down.' },
+  { key: 'net_worst',    label: 'net worst',    signed: true,  tip: 'NET · Total net σ = additive tally of per-signal net moves (reinforcing pile on: −5 & −2 → −7; opposing cancel: −5 & +5 → 0). The most-negative single entity (5th pct). Sort ascending for the bundles with the worst individual entity.' },
+  { key: 'net_best',     label: 'net best',     signed: true,  tip: 'NET · Total net σ. The most-positive single entity (95th pct). Sort descending for the bundles with the best individual entity.' },
+  { key: 'loudness_p95', label: 'loudness p95', signed: false, tip: 'LOUDNESS · Total variation of the standardized path (σ) — how much movement overall. The 95th-percentile entity (high end across the population).' },
+  { key: 'max_loudness', label: 'loudness max', signed: false, tip: 'LOUDNESS · The single loudest entity in this bundle (σ) — the maximum composite loudness of any one entity, vs. loudness p95 which is the 95th-percentile across entities.' },
+  { key: 'ker_worst',    label: 'KER worst',    signed: true,  tip: 'KER · Most-negative KER across entities (5th pct), range −1…+1. −1 = clean deteriorating trend (no reversals).' },
+  { key: 'ker_best',     label: 'KER best',     signed: true,  tip: 'KER · Most-positive KER across entities (95th pct), range −1…+1. +1 = clean improving trend (no reversals).' },
+];
 
 function setSaMode(m) {
   saMode = m;
@@ -2287,10 +2340,59 @@ function renderComposeBar() {
   const def = new Set([roles[saLevel + '_position'], roles[saLevel + '_growth']].filter(Boolean));
   const levelSigs = (META.signals || []).filter(s => s.level === saLevel);
   const chks = levelSigs.map(s =>
-    `<label class="sa-chk"><input type="checkbox" class="sa-csig" value="${s.id}" ${def.has(s.id) ? 'checked' : ''}> ${saSig(s.id)}</label>`).join('');
+    `<label class="sa-chk"><input type="checkbox" class="sa-csig" value="${s.id}" ${def.has(s.id) ? 'checked' : ''} onchange="rebalanceWeights()"> ${saSig(s.id)}<span class="sa-wt"><input type="number" class="sa-wt-input" data-sig="${s.id}" min="0" max="100" step="1" title="This signal's share of the blend (%). The checked signals always total 100% — edit one and the rest rebalance proportionally. Equal shares = plain composite." onchange="rebalanceWeights(this.dataset.sig)"><span class="sa-pct">%</span></span></label>`).join('');
   document.getElementById('sa-compose-bar').innerHTML =
     `<div class="sa-bar">${chks}</div>
-     <button class="btn small" onclick="runSaCompose()">🧬 Compute composite</button>`;
+     <button class="btn small" onclick="runSaCompose()">🧬 Compute composite</button>
+     <span style="font-size:11px;color:#888;margin-left:8px">shares total 100% across checked signals · equal shares = plain composite</span>`;
+  rebalanceWeights();
+}
+
+// The weight boxes ARE percentages summing to 100 across the checked signals. Editing one box
+// holds that value and splits the remaining share among the others in proportion to their current
+// values; checking/unchecking renormalizes everything. Rounded to whole % with the remainder
+// parked on the largest so the displayed shares always total exactly 100.
+function composeCheckedInputs() {
+  return [...document.querySelectorAll('.sa-csig:checked')]
+    .map(c => ({ id: c.value, el: document.querySelector(`.sa-wt-input[data-sig="${c.value}"]`) }))
+    .filter(x => x.el);
+}
+function rebalanceWeights(changedId) {
+  const list = composeCheckedInputs();
+  document.querySelectorAll('.sa-wt-input').forEach(inp => {
+    const on = list.some(x => x.id === inp.dataset.sig);
+    inp.disabled = !on;
+    inp.style.opacity = on ? '1' : '0.4';
+    if (!on) inp.value = '';
+  });
+  if (!list.length) return;
+  let weights;
+  const ci = changedId ? list.findIndex(x => x.id === changedId) : -1;
+  if (list.length === 1) weights = [100];
+  else if (ci >= 0) {
+    const v = Math.min(100, Math.max(0, parseFloat(list[ci].el.value) || 0));
+    const others = list.filter((_, i) => i !== ci);
+    const osum = others.reduce((a, x) => a + (parseFloat(x.el.value) || 0), 0);
+    const remaining = 100 - v;
+    weights = list.map((x, i) => {
+      if (i === ci) return v;
+      const cur = parseFloat(x.el.value) || 0;
+      return osum > 0 ? cur / osum * remaining : remaining / others.length;
+    });
+  } else {
+    // checkbox toggled (or first render): changing the signal set re-equalizes the shares,
+    // so a newly-checked signal gets a fair slice instead of defaulting to 0%.
+    weights = list.map(() => 100 / list.length);
+  }
+  // round to whole % and park the rounding remainder on the largest share
+  const rounded = weights.map(w => Math.max(0, Math.round(w)));
+  const diff = 100 - rounded.reduce((a, b) => a + b, 0);
+  if (diff !== 0) {
+    let big = 0;
+    for (let i = 1; i < weights.length; i++) if (weights[i] > weights[big]) big = i;
+    rounded[big] += diff;
+  }
+  list.forEach((x, i) => { x.el.value = String(rounded[i]); });
 }
 
 async function runSaCompose() {
@@ -2298,15 +2400,26 @@ async function runSaCompose() {
   const sigs = [...document.querySelectorAll('.sa-csig:checked')].map(c => c.value);
   const out = document.getElementById('sa-results');
   if (sigs.length < 2) { out.innerHTML = '<p style="color:#cc3322;font-size:13px">Pick at least 2 signals.</p>'; return; }
+  // Read the per-signal shares (%) for the checked signals and normalize to sum 1.
+  const rawW = sigs.map(id => {
+    const el = document.querySelector(`.sa-wt-input[data-sig="${id}"]`);
+    return Math.max(0, parseFloat(el && el.value) || 0);
+  });
+  const sumW = rawW.reduce((a, b) => a + b, 0);
+  const weights = sumW > 0 ? rawW.map(w => w / sumW) : sigs.map(() => 1 / sigs.length);
+  const equal = weights.every(w => Math.abs(w - 1 / sigs.length) < 1e-9);
+  const wq = equal ? '' : `&weights=${weights.map(w => w.toFixed(6)).join(',')}`;
   out.textContent = 'Computing…';
   let d;
-  try { d = await (await fetch(`/api/report/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${sigs.join(',')}`)).json(); }
+  try { d = await (await fetch(`/api/report/signal_analysis/composite?brand=${encodeURIComponent(brand)}&signals=${sigs.join(',')}${wq}`)).json(); }
   catch (e) { out.innerHTML = '<div class="sig-error">Request failed.</div>'; return; }
   if (d.error) { out.innerHTML = `<div class="sig-error">${d.error}</div>`; return; }
   saComposeRows = d.rows || [];
+  saComposeSummary = d.summary || null;
   saComposeSignals = sigs;
+  saComposeWeights = equal ? null : weights;
   document.getElementById('sa-meta').textContent =
-    `${d.brand} · as-of ${d.asof} · composite of ${sigs.length} signals · ${d.rows.length} entities · standardized (σ) units`;
+    `${d.brand} · as-of ${d.asof} · composite of ${sigs.length} signals${equal ? '' : ' (weighted)'} · ${d.rows.length} entities · standardized (σ) units`;
   renderComposeTable();
 }
 
@@ -2342,7 +2455,7 @@ function renderComposeTable() {
     const ar = active ? (dir < 0 ? ' ▼' : ' ▲') : ' ⇅';
     return `<th class="num sa-sort-th${active ? ' sa-sort-active' : ''}" onclick="sortComposeBy('${key}')" title="${tip}" style="cursor:pointer">${label}${ar}</th>`;
   };
-  out.innerHTML = `<table class="sa-table"><thead><tr>
+  out.innerHTML = composeScorecard() + `<table class="sa-table"><thead><tr>
       <th class="num">#</th><th title="Click any row to see per-signal charts and possible meanings">entity · click for detail</th>
       ${th('composite_loudness', 'loudness', 'Total variation of the standardized N-D trajectory (σ) — how much movement overall')}
       ${th('composite_net', 'total net', 'Additive tally of the per-signal net moves (σ): reinforcing pile on (−5 &amp; −2 → −7), opposing cancel (−5 &amp; +5 → 0). Sort ascending for most-deteriorating entities.')}
@@ -2350,6 +2463,25 @@ function renderComposeTable() {
       <th title="Each signal's own standardized movement + direction (interpret the composite)">contribution by signal</th>
       <th title="Plain-language read: reinforcing vs divergent, and the dominant driver">interpretation</th>
     </tr></thead><tbody>${body}</tbody></table>`;
+}
+
+// The bundle-level scorecard for the composed signals — the SAME metrics (SA_COLS) Auto-search
+// shows per combo, so a composed bundle reads identically to its auto-search row. The per-entity
+// table below is the drill-down.
+function composeScorecard() {
+  const s = saComposeSummary;
+  if (!s) return '';
+  const cells = SA_COLS.map(c => {
+    const v = s[c.key] ?? 0;
+    const color = c.signed ? (v < 0 ? '#c0392b' : '#1e8449') : '';
+    return `<div class="sc${c.strong ? ' lead' : ''}" title="${c.tip.replace(/"/g, '&quot;')}">
+        <div class="lbl">${c.label}</div><div class="val" style="color:${color}">${v.toFixed(2)}</div></div>`;
+  }).join('');
+  const wlabel = saComposeWeights
+    ? ` · weighted ${saComposeSignals.map((id, i) => Math.round(saComposeWeights[i] * 100) + '%').join('/')}`
+    : '';
+  return `<div style="font-size:11px;color:#888;margin:2px 0 3px">bundle scorecard${wlabel} — same metrics as Auto-search · hover any tile</div>
+    <div class="sa-score">${cells}</div>`;
 }
 
 async function runSaSearch() {
@@ -2383,16 +2515,24 @@ function renderSearchTable() {
   }
   const { col, dir } = saSearchSort;
   const sorted = [...saSearchCombos].sort((a, b) => dir * ((b[col] ?? 0) - (a[col] ?? 0)));
-  // Columns grouped: NET together, LOUDNESS together, KER together.
-  const cols = [
-    { key: 'net_total',    label: 'market net',   signed: true, strong: true, tip: 'NET · Market-wide net σ for this combination: the sum of EVERY entity\'s total net (not any single entity). Reinforcing deterioration across many entities piles up; scattered/opposing moves cancel. A whole-population number — an individual entity in the detail can be far more negative. Sort ascending to find combinations dragging the market down.' },
-    { key: 'net_worst',    label: 'net worst',    signed: true, tip: 'NET · Total net σ = additive tally of per-signal net moves (reinforcing pile on: −5 & −2 → −7; opposing cancel: −5 & +5 → 0). Most-negative single entity (5th pct). Sort ascending for the combos with the worst individual entity.' },
-    { key: 'net_best',     label: 'net best',     signed: true, tip: 'NET · Total net σ. Most-positive single entity (95th pct). Sort descending for the combos with the best individual entity.' },
-    { key: 'loudness_p95', label: 'loudness p95', signed: false, tip: 'LOUDNESS · Total variation of the standardized path (σ) — how much movement overall. The 95th-percentile entity (high end across the population).' },
-    { key: 'max_loudness', label: 'loudness max', signed: false, tip: 'LOUDNESS · The single loudest entity in this combination (σ) — the maximum composite loudness of any one entity, vs. loudness p95 which is the 95th-percentile across entities.' },
-    { key: 'ker_worst',    label: 'KER worst',    signed: true, tip: 'KER · Most-negative KER across entities (5th pct), range −1…+1. −1 = clean deteriorating trend (no reversals).' },
-    { key: 'ker_best',     label: 'KER best',     signed: true, tip: 'KER · Most-positive KER across entities (95th pct), range −1…+1. +1 = clean improving trend (no reversals).' },
-  ];
+  // Dedup: walking the sorted list, drop a combo that is fully contained in (a subset of, or
+  // superset of) an already-kept higher-ranked combo. Collapses "the same pair echoed inside
+  // many triples" and "a triple plus its own sub-pairs" — keeps genuinely distinct stories.
+  let kept = sorted, hidden = 0;
+  if (saSearchDedup) {
+    kept = [];
+    for (const c of sorted) {
+      const cs = new Set(c.signals);
+      const nested = kept.some(k => {
+        const inter = k.signals.filter(s => cs.has(s)).length;
+        return inter === Math.min(c.signals.length, k.signals.length);
+      });
+      if (nested) hidden++; else kept.push(c);
+    }
+  }
+  // Columns grouped: SYNERGY first (the discovery headline), then NET, LOUDNESS, KER —
+  // shared with the Compose scorecard via SA_COLS so the two surfaces read identically.
+  const cols = SA_COLS;
   const thSort = k => {
     const active = col === k;
     const arrow = active ? (dir < 0 ? ' ▼' : ' ▲') : ' ⇅';
@@ -2404,18 +2544,22 @@ function renderSearchTable() {
     const inner = def.signed ? signedCell(c[k]) : (c[k] ?? 0).toFixed(2);
     return `<td class="num${col === k ? ' sa-sort-active' : ''}">${def.strong ? `<b>${inner}</b>` : inner}</td>`;
   };
-  const body = sorted.slice(0, 30).map((c, i) => `<tr class="cd-row-click" onclick="openSearchDetail(${saSearchCombos.indexOf(c)})">
+  const body = kept.slice(0, 30).map((c, i) => `<tr class="cd-row-click" onclick="openSearchDetail(${saSearchCombos.indexOf(c)})">
       <td class="num">${i + 1}</td>
       <td class="sa-mono">${c.signals.map(saSig).join('  +  ')}</td>
       ${cols.map(co => cell(c, co.key)).join('')}
       <td style="color:#888;font-size:11px">${(c.top_regions||[]).join(', ')}</td></tr>`).join('');
-  document.getElementById('sa-results').innerHTML = `<table class="sa-table"><thead><tr>
+  const dedupNote = `<label class="sa-chk" style="font-size:11px;color:#888;margin:0 0 6px;display:inline-flex;cursor:pointer">
+      <input type="checkbox" ${saSearchDedup ? 'checked' : ''} onchange="toggleSaDedup(this.checked)"> hide nested duplicates${saSearchDedup && hidden ? ` (${hidden} hidden)` : ''}</label>`;
+  document.getElementById('sa-results').innerHTML = `${dedupNote}<table class="sa-table"><thead><tr>
       <th class="num">#</th>
       <th title="Click any row for per-entity charts and interpretation">combo · click for detail</th>
       ${cols.map(co => thSort(co.key)).join('')}
       <th title="The 3 loudest entities in this combination">loudest entities</th>
     </tr></thead><tbody>${body}</tbody></table>`;
 }
+
+function toggleSaDedup(on) { saSearchDedup = on; renderSearchTable(); }
 
 /* ── Composite detail helpers ── */
 
@@ -2662,6 +2806,34 @@ const MAD_HTML = `<div class="cd-mad">
   (you need lots of data for a stable "normal move" — 3 deltas would be noise). std net divides one by the other.</p>
 </div>`;
 
+// Consolidated methodology: the single home for every definition, the scorecard column reference
+// (generated from SA_COLS so it can never drift), and the worked std-net example (MAD_HTML).
+// Surfaced inline in a collapsible panel — no longer buried in per-row popups.
+const SA_METHOD_HTML = `
+  <div class="sa-method-prose">
+    <p>Metrics here live on wildly different scales — a 1–100 sales rank, a ±pp share deviation, a YoY % growth.
+    To compare or combine them, each signal's month-to-month steps are first <b>standardized</b>: divided by that
+    metric's own typical monthly move (its MAD scale), so everything is expressed in <b>σ</b> — "normal monthly
+    moves." A −2σ step means twice a usual month, downward, whatever the metric. The worked example at the bottom
+    walks one signal through it end to end.</p>
+    <h4>The four core measures</h4>
+    <dl class="sa-defs">
+      <dt>Loudness</dt><dd>Total movement — the sum of the absolute standardized steps (σ). High = lots of motion in any direction; says nothing about which way.</dd>
+      <dt>Net</dt><dd>Where it ended up — latest minus oldest, projected onto the signal's "good" direction (σ). Negative = deteriorated. In-between bumps telescope away.</dd>
+      <dt>KER <span>· Kaufman Efficiency Ratio</span></dt><dd>net ÷ loudness, range −1…+1 — how <em>directional</em> the movement is. +1 clean improvement, −1 clean decline, 0 loud oscillation that nets to nothing.</dd>
+      <dt>Synergy</dt><dd>How much deeper a bundle's worst entity sinks than its worst single signal alone (σ). High = several metrics piling onto the <em>same</em> entities — a compounding problem you can't see one metric at a time. Negative = they offset.</dd>
+    </dl>
+    <h4>Composites &amp; weights</h4>
+    <p>A <b>composite</b> fuses N signals into one trajectory: each month the standardized steps form a vector, and
+    composite loudness is the length of that combined path; net and KER lift to N dimensions the same way. Signals
+    must share one grain (region and territory entities never overlap). <b>Weights</b> (Compose only) scale each
+    signal's steps before combining and always total&nbsp;1 — <em>equal weights reproduce the plain composite</em>;
+    raise one to let that metric dominate, drop one toward 0 to mute it.</p>
+    <h4>Scorecard columns <span style="font-weight:400;color:#888">— identical in Compose and Auto-search</span></h4>
+    <ul class="sa-col-ref">${SA_COLS.map(c => `<li><b>${c.label}</b> — ${c.tip.replace(/^[A-Z]+ · /, '')}</li>`).join('')}</ul>
+  </div>
+  ${MAD_HTML}`;
+
 // Build a signal card with sparkline + raw series trail + metric label.
 function sigCard(sid, contrib) {
   const c = contrib[sid];
@@ -2708,7 +2880,7 @@ function openComposeDetail(i) {
      <div class="cd-grid">${cards}</div>
      <b style="font-size:12px;color:#555;display:block;margin:6px 0 3px">Business interpretation</b>
      <ul class="cd-meanings">${bullets.map(b => `<li>${b}</li>`).join('')}</ul>
-     ${MAD_HTML}`);
+     <p class="cd-method-link">New to σ, loudness, net or KER? See <b>📖 How this works</b> at the top of the tab.</p>`);
 }
 
 function renderDetailEntities() {
@@ -2769,16 +2941,30 @@ async function openSearchDetail(i) {
   const sortBtns = sortBtnDefs.map(({ col, label, tip }) =>
     `<button id="sa-dsort-${col}" class="btn small${col==='loudness'?' active':''}" onclick="sortDetailBy('${col}')" title="${tip}" style="margin-right:4px">${label}</button>`).join('');
   openInfo(`${combo.signals.map(saSig).join(' + ')} · ${d.rows.length} entities`,
-    `<div class="info-note" style="margin-bottom:8px">
-       <span title="Sum of every entity's total net — a whole-market number, not any single entity below">market net <b>${(combo.net_total??0).toFixed(2)} σ</b></span>
+    `<div style="margin-bottom:8px">
+       <button class="btn small" onclick="promoteToFinding(${i})" title="Open the Finding composer pre-filled with these signals as axes — a Finding is exactly this composite, made permanent and re-runnable." style="background:#2266aa;color:#fff;border-color:#2266aa">➕ Promote to Finding</button>
+       <span style="color:#888;font-size:11px;margin-left:6px">a Finding is this composite, made permanent &amp; re-runnable</span>
+     </div>
+     <div class="info-note" style="margin-bottom:8px">
+       <span title="How much deeper this bundle's worst entity sinks than its worst single signal alone (σ) — the metrics piling onto the same entities">synergy <b>${(combo.synergy??0).toFixed(2)}</b></span>
+       · <span title="Sum of every entity's total net — a whole-market number, not any single entity below">market net <b>${(combo.net_total??0).toFixed(2)} σ</b></span>
        · loudness p95 <b>${combo.loudness_p95.toFixed(2)} σ</b>
        · per-entity total net <b>${(combo.net_worst??0).toFixed(2)}</b>…<b>${(combo.net_best??0).toFixed(2)} σ</b>
        · KER <b>${((combo.ker_worst??0)*100).toFixed(0)}%</b>…<b>${((combo.ker_best??0)*100).toFixed(0)}%</b>
        &nbsp;·&nbsp; Sort by: ${sortBtns}
      </div>
      <div id="sa-detail-entities"></div>
-     ${MAD_HTML}`);
+     <p class="cd-method-link">New to σ, loudness, net or KER? See <b>📖 How this works</b> at the top of the tab.</p>`);
   renderDetailEntities();
+}
+
+// Promote a searched combo into a Finding: hand its signals to the Finding composer
+// (one axis per signal) by navigating the app shell to the editor with ?promote=…
+function promoteToFinding(i) {
+  const combo = saSearchCombos[i];
+  if (!combo) return;
+  const url = '/findings/editor?promote=' + encodeURIComponent(combo.signals.join(','));
+  try { window.top.location.href = url; } catch (e) { window.location.href = url; }
 }
 
 /* ── Findings tab ── */
