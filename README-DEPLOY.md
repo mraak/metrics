@@ -42,8 +42,12 @@ was written up, in both driver modes.
   deploy does not create any of that.
 - Local tools: `terraform` (>= 1.5), `docker`, `aws` CLI (configured with
   credentials for the target account), `python3` with `psycopg2-binary`
-  (`pip install -r requirements.txt`).
+  (`pip install -r requirements.txt`), and the
+  [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html#install-plugin-macos)
+  (`brew install --cask session-manager-plugin`).
 - Your corporate network's CIDR range(s), to allow inbound to the app port.
+- VPC must have `enableDnsHostnames = true` and `enableDnsSupport = true`
+  (Terraform creates the SSM/S3 VPC endpoints, but private DNS must be on).
 
 ## 1. Provision infrastructure (Terraform)
 
@@ -67,16 +71,26 @@ terraform apply
 ```
 
 This creates: an RDS Postgres instance (single-AZ, private, `db.t4g.micro` by
-default), a security group that only allows the app host to reach Postgres,
-an ECR repository for the app image, and an EC2 instance (private, no public
-IP) with an instance profile that can pull from ECR and be reached via SSM
-Session Manager. `app_image` is unset on this first apply, so the instance
-boots without a running container yet — that's expected.
+default), a security group that only allows the app host to reach Postgres, an
+ECR repository for the app image, VPC endpoints for S3 (gateway — so `dnf`
+works on the private instance), SSM / SSMMessages / EC2Messages (so Session
+Manager can reach the instance), and ECR API + ECR DKR (interface — so the
+instance can pull the container image), and an EC2 instance (20 GB root
+volume, private, no public IP) with an instance profile that can pull from ECR
+and be reached via SSM Session Manager. `app_image` is unset on this first
+apply, so the instance boots without a running container yet — that's
+expected.
 
 Note the outputs: `database_url`, `ecr_repository_url`, `ec2_instance_id`,
 `app_url`.
 
 ## 2. Migrate the existing data into RDS
+
+Generate the SQLite database locally first, then migrate it to RDS:
+
+```bash
+python3 seed.py && python3 compute_metrics.py
+```
 
 The RDS instance has no public IP, so run this from somewhere with VPC
 access. The simplest option is an SSM port-forward through the EC2 instance
@@ -185,3 +199,19 @@ same 9 tables — the app doesn't change. Two ways to get there:
 - **`skip_final_snapshot = true`** on the RDS instance — fine for now since
   all data is reproducible from `migrate_to_postgres.py`, but flip this once
   real production data lives there.
+- **SSM agent on AL2023 is RPM-based, not Snap.** AL2023 ships the SSM agent
+  as a snap by default, but `snapd` can't start without internet access (needs
+  the Snap Store). The user-data script replaces it with `amazon-ssm-agent`
+  from the `dnf` repos (reachable over the S3 VPC endpoint), so SSM Session
+  Manager works on a fully private subnet with only the S3/SSM/SSMMessages/
+  EC2Messages VPC endpoints — no NAT gateway needed.
+- **RDS SSL: `?sslmode=no-verify`.** The Alpine-based Docker image doesn't
+  ship the RDS CA bundle, and downloading it at boot requires an extra S3
+  call. The connection is still encrypted over TLS; CA verification is skipped
+  as a deliberate tradeoff for traffic that never leaves the VPC. If this
+  becomes a compliance issue, add a `curl` of the RDS CA bundle to user-data
+  and mount it into the container.
+- **20 GB root volume.** The AL2023 AMI defaults to 2 GB, which isn't enough
+  for Docker + an extracted container image (~500 MB). 20 GB (gp3) is set in
+  `root_block_device`. User-data runs `growpart` + `xfs_growfs` to expand the
+  filesystem if the volume is resized.

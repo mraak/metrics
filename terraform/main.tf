@@ -66,6 +66,79 @@ resource "aws_security_group" "db" {
   tags = { Name = "${var.name_prefix}-db" }
 }
 
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${var.name_prefix}-vpc-endpoints"
+  description = "Allow HTTPS from the app host to SSM VPC endpoints"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description = "HTTPS from app host"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    security_groups = [aws_security_group.app.id]
+  }
+
+  tags = { Name = "${var.name_prefix}-vpc-endpoints" }
+}
+
+resource "aws_vpc_endpoint" "s3" {
+  vpc_id            = var.vpc_id
+  service_name      = "com.amazonaws.${var.aws_region}.s3"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = data.aws_route_tables.vpc.ids
+  tags              = { Name = "${var.name_prefix}-s3" }
+}
+
+data "aws_route_tables" "vpc" {
+  vpc_id = var.vpc_id
+}
+
+resource "aws_vpc_endpoint" "ssm" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ssm"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+}
+
+resource "aws_vpc_endpoint" "ssmmessages" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ssmmessages"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+}
+
+resource "aws_vpc_endpoint" "ec2messages" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ec2messages"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+}
+
+resource "aws_vpc_endpoint" "ecr_api" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+}
+
+resource "aws_vpc_endpoint" "ecr_dkr" {
+  vpc_id              = var.vpc_id
+  service_name        = "com.amazonaws.${var.aws_region}.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  private_dns_enabled = true
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoints.id]
+}
+
 # ─── RDS Postgres ───────────────────────────────────────────────────────────
 
 resource "aws_db_subnet_group" "this" {
@@ -157,6 +230,11 @@ resource "aws_instance" "app" {
   key_name               = var.key_name
 
   associate_public_ip_address = false
+
+  root_block_device {
+    volume_size = 20
+    volume_type = "gp3"
+  }
 
   user_data = templatefile("${path.module}/templates/user_data.sh.tpl", {
     aws_region   = var.aws_region
