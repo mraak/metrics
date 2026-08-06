@@ -22,7 +22,7 @@ data "aws_ami" "al2023" {
 
 resource "aws_security_group" "app" {
   name        = "${var.name_prefix}-app"
-  description = "SQL-Metrics Studio app host — inbound from corporate network only, plain HTTP (no ALB/ACM)."
+  description = "SQL-Metrics Studio app host - inbound from corporate network only, plain HTTP (no ALB/ACM)."
   vpc_id      = var.vpc_id
 
   ingress {
@@ -45,7 +45,7 @@ resource "aws_security_group" "app" {
 
 resource "aws_security_group" "db" {
   name        = "${var.name_prefix}-db"
-  description = "RDS Postgres — inbound from the app host only."
+  description = "RDS Postgres - inbound from the app host only."
   vpc_id      = var.vpc_id
 
   ingress {
@@ -90,7 +90,7 @@ resource "aws_db_instance" "this" {
   db_subnet_group_name   = aws_db_subnet_group.this.name
   vpc_security_group_ids = [aws_security_group.db.id]
   publicly_accessible    = false
-  multi_az               = false # no scaling/HA requirement — single instance
+  multi_az               = false # no scaling/HA requirement - single instance
 
   backup_retention_period = 7
   skip_final_snapshot     = true # internal tool with data reproducible from migrate_to_postgres.py; simplifies teardown
@@ -128,7 +128,7 @@ resource "aws_iam_role" "app" {
 }
 
 # ECR pull rights + SSM Session Manager (so you can reach the instance without
-# opening SSH / needing a bastion — pairs well with "no public IP").
+# opening SSH / needing a bastion - pairs well with "no public IP").
 resource "aws_iam_role_policy_attachment" "ecr_read" {
   role       = aws_iam_role.app.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
