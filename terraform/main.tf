@@ -177,6 +177,7 @@ resource "aws_db_instance" "this" {
 resource "aws_ecr_repository" "app" {
   name                 = "${var.name_prefix}-studio"
   image_tag_mutability = "MUTABLE"
+  force_delete         = true
 
   image_scanning_configuration {
     scan_on_push = true
