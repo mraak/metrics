@@ -42,19 +42,19 @@ interface NRow {
 
 const rnd1 = (v: number | null | undefined): number | null => (v == null ? null : round(v, 1))
 
-export function territoryMetrics(brand: string, asofParam?: string): Json {
+export async function territoryMetrics(brand: string, asofParam?: string): Promise<Json> {
   const defs = knowledgeDefs()
   const sigTpl = signalTemplates(defs)[role(defs, 'territory_position')]
   const sigKind = sigTpl.strength_kind ?? 'position'
   const sigOffsets = [...sigTpl.lags].sort((a, b) => b - a)   // oldest -> now
   const db = metricsDb()
 
-  const yms = (db.prepare('SELECT DISTINCT year_month FROM territory_metrics ORDER BY year_month').all() as { year_month: string }[])
+  const yms = (await db.prepare('SELECT DISTINCT year_month FROM territory_metrics ORDER BY year_month').all() as { year_month: string }[])
     .map(r => r.year_month)
   const asof = asofParam || yms[yms.length - 1]
   const i = yms.indexOf(asof)
 
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     SELECT territory_name AS t, year_month AS ym, sales_eur, units,
            market_share, mshare_deviation, growth_py_sales, growth_pp_sales,
            growth_vs_fcst_eur, growth_deviation
@@ -62,12 +62,12 @@ export function territoryMetrics(brand: string, asofParam?: string): Json {
     WHERE brand_name = ? AND period_type = 'MAT'
   `).all(brand) as TRow[]
   const rc: Record<string, number> = {}
-  for (const r of db.prepare('SELECT territory_name AS t, COUNT(*) AS n FROM regions GROUP BY territory_name').all() as { t: string; n: number }[]) {
+  for (const r of await db.prepare('SELECT territory_name AS t, COUNT(*) AS n FROM regions GROUP BY territory_name').all() as { t: string; n: number }[]) {
     rc[r.t] = r.n
   }
   // national TRUE attainment per period_type: actual ÷ forecast (level, not growth)
   const fcstM: Record<string, number> = {}
-  for (const r of db.prepare(`
+  for (const r of await db.prepare(`
     SELECT f.year_month AS ym, SUM(f.sales_eur) AS f FROM forecast f
     JOIN skus s USING(sku_id) JOIN brands b ON s.brand_id=b.brand_id
     WHERE b.brand_name=? GROUP BY f.year_month
@@ -75,7 +75,7 @@ export function territoryMetrics(brand: string, asofParam?: string): Json {
     fcstM[r.ym] = r.f
   }
   const natActual: Record<string, number> = {}
-  for (const r of db.prepare(`
+  for (const r of await db.prepare(`
     SELECT period_type AS p, SUM(sales_eur) AS s FROM territory_metrics
     WHERE brand_name=? AND year_month=? GROUP BY period_type
   `).all(brand, asof) as { p: string; s: number }[]) {
@@ -90,7 +90,7 @@ export function territoryMetrics(brand: string, asofParam?: string): Json {
   // per brand = the brand's national position). No longer back-derived from
   // territory sums — the absolute columns are computed correctly by the ETL.
   const natByYm: Record<string, NRow> = {}
-  for (const r of db.prepare(`
+  for (const r of await db.prepare(`
     SELECT year_month AS ym, sales_eur, units, market_share,
            growth_py_sales, growth_pp_sales, growth_vs_fcst_eur
     FROM national_metrics

@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const p = req.nextUrl.searchParams
-    return NextResponse.json(search(
+    return NextResponse.json(await search(
       p.get('brand') ?? undefined, p.get('asof') ?? undefined,
       parseInt(p.get('k') ?? '3', 10)))
   } catch (err) {

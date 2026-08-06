@@ -30,6 +30,10 @@ open http://localhost:3100/            # Studio (editors: Data / Signals / Findi
 open http://localhost:3100/schema.html # Report (Schema / Signals / Signal Analysis / Findings / Insights)
 ```
 
+This reads `metrics.db` / `studio/studio.db` directly (SQLite) — no setup beyond step 1.
+Set `DATABASE_URL` to a Postgres connection string to run against Postgres
+instead (used for the AWS deployment — see [README-DEPLOY.md](README-DEPLOY.md)); leave it unset for local SQLite, which is the default.
+
 ### 3. Validate the Knowledge Definitions
 
 ```bash

@@ -1,14 +1,12 @@
-import { metricsDb } from './db'
+import { metricsDb, tableColumns } from './db'
 import { readSignalByName } from './knowledge-store'
 import { knowledgeDefs, signalStrength } from './knowledge'
 import type { SignalDefinition, SignalRow, SignalStrength, FilterCondition, SegmentValues } from './types'
 
 // ── Column validation ─────────────────────────────────────────────────────────
-// Returns the set of column names for the given table in metrics.db.
-function getTableColumns(table: string): Set<string> {
-  const db = metricsDb()
-  const rows = db.pragma(`table_info(${table})`) as { name: string }[]
-  return new Set(rows.map(r => r.name))
+// Returns the set of column names for the given table.
+async function getTableColumns(table: string): Promise<Set<string>> {
+  return tableColumns(table)
 }
 
 function assertColumn(col: string, validCols: Set<string>, fieldName: string) {
@@ -64,13 +62,13 @@ export function computeStrength(series: number[], def: SignalDefinition): Signal
 // ── Core generic signal computation ──────────────────────────────────────────
 // segmentValues: e.g. { brand_name: 'Oncleris' } — one value per segment_by column.
 // asof: optional — defaults to MAX(time_dimension) matching the filters+segment.
-export function computeSignal(
+export async function computeSignal(
   def: SignalDefinition,
   segmentValues: Record<string, string | number> = {},
   asof?: string
-): SignalRow[] {
+): Promise<SignalRow[]> {
   const db = metricsDb()
-  const cols = getTableColumns(def.source_table)
+  const cols = await getTableColumns(def.source_table)
 
   // Validate all referenced columns exist in the source table
   assertColumn(def.entity_dimension, cols, 'entity_dimension')
@@ -84,7 +82,7 @@ export function computeSignal(
 
   // Resolve asof if not provided
   if (!asof) {
-    const row = db.prepare(
+    const row = await db.prepare(
       `SELECT MAX(${def.time_dimension}) AS t FROM ${def.source_table} ${filterClause}`
     ).get(...filterParams) as { t: string } | undefined
     asof = row?.t
@@ -116,7 +114,7 @@ export function computeSignal(
     WHERE _time = ? ${maxLag > 0 ? `AND v${maxLag} IS NOT NULL` : ''}
   `
 
-  const rawRows = db.prepare(sql).all(...filterParams, asof) as Record<string, unknown>[]
+  const rawRows = await db.prepare(sql).all(...filterParams, asof) as Record<string, unknown>[]
 
   return rawRows.map(row => {
     // Series: oldest (v_maxLag) → now (v0)
@@ -154,16 +152,16 @@ export function computeSignal(
 }
 
 // ── Distinct segment values (for the preview UI checkboxes) ──────────────────
-export function getSegmentValues(def: SignalDefinition): SegmentValues[] {
+export async function getSegmentValues(def: SignalDefinition): Promise<SegmentValues[]> {
   if (!def.segment_by.length) return []
   const db = metricsDb()
   const { clause, params } = buildFilterSQL(def.filters, {})
-  return def.segment_by.map(col => {
-    const rows = db.prepare(
+  return Promise.all(def.segment_by.map(async col => {
+    const rows = await db.prepare(
       `SELECT DISTINCT ${col} AS v FROM ${def.source_table} ${clause} ORDER BY ${col}`
     ).all(...params) as { v: string }[]
     return { column: col, values: rows.map(r => r.v) }
-  })
+  }))
 }
 
 // ── Load a saved signal definition from knowledge_definitions.json ───────────

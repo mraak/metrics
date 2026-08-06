@@ -8,12 +8,12 @@ function getSignalDef(signalId: string): SignalDefinition {
   return def
 }
 
-export function classifyFindings(
+export async function classifyFindings(
   def: FindingDefinition,
   // segmentValues: e.g. { brand_name: 'Oncleris' } — forwarded to each axis signal
   segmentValues: Record<string, string | number>,
   asof: string
-): FindingRow[] {
+): Promise<FindingRow[]> {
   // Step 1: For each axis, compute signal rows
   const axisSignalDefs: Map<string, SignalDefinition> = new Map()
   const axisSignalMaps: Map<string, Map<string, import('./types').SignalRow>> = new Map()
@@ -22,7 +22,7 @@ export function classifyFindings(
     const signalDef = getSignalDef(axis.signal_id)
     axisSignalDefs.set(axis.name, signalDef)
 
-    const signalRows = computeSignal(signalDef, segmentValues, asof)
+    const signalRows = await computeSignal(signalDef, segmentValues, asof)
     const regionMap = new Map<string, import('./types').SignalRow>()
     for (const row of signalRows) {
       regionMap.set(row.entity, row)

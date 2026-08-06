@@ -92,11 +92,11 @@ function totalVariation(series: number[]): number {
 
 /** Robust scale (MAD) of one-month deltas, pooled over all brands/entities at
  *  this grain. Cached per (table, metric, period_type). */
-export function stepScale(metric: string, periodType: string, table = 'region_metrics', ent = 'region_name'): number {
+export async function stepScale(metric: string, periodType: string, table = 'region_metrics', ent = 'region_name'): Promise<number> {
   const key = `${table}|${metric}|${periodType}`
   const hit = scaleCache.get(key)
   if (hit != null) return hit
-  const rows = metricsDb().prepare(
+  const rows = await metricsDb().prepare(
     `SELECT ${ent} AS e, brand_name, ${metric} AS v FROM ${table}
      WHERE period_type=? AND ${metric} IS NOT NULL
      ORDER BY brand_name, e, year_month`
@@ -122,8 +122,8 @@ export function stepScale(metric: string, periodType: string, table = 'region_me
 
 type WindowHist = [string, number[], number][]   // (year_month, [m3..m0], rank)
 
-function windows(metric: string, brand: string, period: string, table: string, ent: string): Record<string, WindowHist> {
-  const rows = metricsDb().prepare(`
+async function windows(metric: string, brand: string, period: string, table: string, ent: string): Promise<Record<string, WindowHist>> {
+  const rows = await metricsDb().prepare(`
     WITH s AS (
       SELECT ${ent} AS e, year_month, rank_sales_eur AS rk,
              ${metric} AS m0,
@@ -150,8 +150,8 @@ interface AnalysisRow extends Json {
   vs_self: number | null
 }
 
-export function analyzeSignal(sigId: string, sig: SignalTemplate, brand: string, asof: string): Json {
-  const wins = windows(sig.metric, brand, sig.period_type, sourceTable(sig), entityDim(sig))
+export async function analyzeSignal(sigId: string, sig: SignalTemplate, brand: string, asof: string): Promise<Json> {
+  const wins = await windows(sig.metric, brand, sig.period_type, sourceTable(sig), entityDim(sig))
   const kind = sig.strength_kind ?? 'position'
   const defs = DEFS()
   const rows: AnalysisRow[] = []
@@ -206,21 +206,21 @@ function tagFor(vsPeers: number, vsSelf: number | null): string {
   return 'quiet'
 }
 
-function defaultBrandAsof(brand?: string, asof?: string): { brand: string; asof: string } {
+async function defaultBrandAsof(brand?: string, asof?: string): Promise<{ brand: string; asof: string }> {
   const db = metricsDb()
   if (!brand) {
-    brand = (db.prepare('SELECT DISTINCT brand_name FROM region_metrics ORDER BY brand_name LIMIT 1').get() as { brand_name: string }).brand_name
+    brand = (await db.prepare('SELECT DISTINCT brand_name FROM region_metrics ORDER BY brand_name LIMIT 1').get() as { brand_name: string }).brand_name
   }
   if (!asof) {
-    asof = (db.prepare('SELECT MAX(year_month) AS ym FROM region_metrics').get() as { ym: string }).ym
+    asof = (await db.prepare('SELECT MAX(year_month) AS ym FROM region_metrics').get() as { ym: string }).ym
   }
   return { brand, asof }
 }
 
-export function analyzeAll(brandParam?: string, asofParam?: string): Json {
-  const { brand, asof } = defaultBrandAsof(brandParam, asofParam)
+export async function analyzeAll(brandParam?: string, asofParam?: string): Promise<Json> {
+  const { brand, asof } = await defaultBrandAsof(brandParam, asofParam)
   const defs = DEFS()
-  const perSignal = Object.entries(signalTemplates(defs)).map(([sid, s]) => analyzeSignal(sid, s, brand, asof))
+  const perSignal = await Promise.all(Object.entries(signalTemplates(defs)).map(([sid, s]) => analyzeSignal(sid, s, brand, asof)))
   const flat: Json[] = []
   for (const blk of perSignal) {
     for (const r of blk.rows as Json[]) {
@@ -247,11 +247,11 @@ export function analyzeAll(brandParam?: string, asofParam?: string): Json {
 // for composite loudness) AND its raw series (oldest→now, for charting).
 interface StdEntry { steps: number[]; series: number[] }
 
-function stdSteps(sig: SignalTemplate, brand: string): Record<string, Record<string, StdEntry>> {
+async function stdSteps(sig: SignalTemplate, brand: string): Promise<Record<string, Record<string, StdEntry>>> {
   const table = sourceTable(sig)
   const ent = entityDim(sig)
-  const scale = stepScale(sig.metric, sig.period_type, table, ent)
-  const wins = windows(sig.metric, brand, sig.period_type, table, ent)
+  const scale = await stepScale(sig.metric, sig.period_type, table, ent)
+  const wins = await windows(sig.metric, brand, sig.period_type, table, ent)
   const out: Record<string, Record<string, StdEntry>> = {}
   for (const [region, hist] of Object.entries(wins)) {
     const byYm: Record<string, StdEntry> = {}
@@ -270,12 +270,12 @@ function stdSteps(sig: SignalTemplate, brand: string): Record<string, Record<str
 // reproduce the unweighted composite exactly; a weight of 0 drops a signal, a heavier weight
 // amplifies that metric. Weights touch only the standardized geometry — the raw `net`/`series`
 // shown in the per-signal cards stay in their own metric units.
-function compositeRows(sigIds: string[], brand: string, asof: string, weights?: number[]): Json[] {
+async function compositeRows(sigIds: string[], brand: string, asof: string, weights?: number[]): Promise<Json[]> {
   const sigs = signalTemplates(DEFS())
   const wf = (i: number) =>
     (weights && weights.length === sigIds.length ? weights[i] * sigIds.length : 1)
   const stepsBySig: Record<string, Record<string, Record<string, StdEntry>>> = {}
-  for (const sid of sigIds) stepsBySig[sid] = stdSteps(sigs[sid], brand)
+  for (const sid of sigIds) stepsBySig[sid] = await stdSteps(sigs[sid], brand)
   // entities present in every selected signal at asof
   const sets: Set<string>[] = sigIds.map(sid =>
     new Set(Object.keys(stepsBySig[sid]).filter(rg => asof in stepsBySig[sid][rg])))
@@ -363,8 +363,8 @@ function scoreCombo(rows: Json[], sigIds: string[], summaryPctl: number): Json {
   }
 }
 
-export function composite(sigIds: string[], brandParam?: string, asofParam?: string,
-  topPct = 0.05, weights?: number[]): Json {
+export async function composite(sigIds: string[], brandParam?: string, asofParam?: string,
+  topPct = 0.05, weights?: number[]): Promise<Json> {
   const sigs = signalTemplates(DEFS())
   const levels = new Set(sigIds.filter(sid => sid in sigs).map(sid => sigLevel(sigs[sid])))
   if (levels.size > 1) {
@@ -373,8 +373,8 @@ export function composite(sigIds: string[], brandParam?: string, asofParam?: str
         'signals must share one grain (their entities never overlap)',
     }
   }
-  const { brand, asof } = defaultBrandAsof(brandParam, asofParam)
-  const rows = compositeRows(sigIds, brand, asof, weights)
+  const { brand, asof } = await defaultBrandAsof(brandParam, asofParam)
+  const rows = await compositeRows(sigIds, brand, asof, weights)
   const k = Math.max(1, Math.floor(rows.length * topPct))
   return {
     brand, asof, signals: sigIds, weights: weights ?? null, rows,
@@ -396,8 +396,8 @@ function* combinations<T>(arr: T[], k: number): Generator<T[]> {
   }
 }
 
-export function search(brandParam?: string, asofParam?: string, maxK = 3, summaryPctl = 0.95): Json {
-  const { brand, asof } = defaultBrandAsof(brandParam, asofParam)
+export async function search(brandParam?: string, asofParam?: string, maxK = 3, summaryPctl = 0.95): Promise<Json> {
+  const { brand, asof } = await defaultBrandAsof(brandParam, asofParam)
   // combos only make sense within one grain: a region path and a territory
   // path share no entities, so mixed-level composites are always empty
   const byLevel: Record<string, string[]> = {}
@@ -408,7 +408,7 @@ export function search(brandParam?: string, asofParam?: string, maxK = 3, summar
   for (let k = 2; k <= maxK; k++) {
     for (const ids of Object.values(byLevel)) {
       for (const combo of combinations(ids, k)) {
-        const rows = compositeRows(combo, brand, asof)
+        const rows = await compositeRows(combo, brand, asof)
         if (!rows.length) continue
         combos.push({
           signals: combo, size: k,

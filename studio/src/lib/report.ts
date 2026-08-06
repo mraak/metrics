@@ -10,29 +10,29 @@ import {
 
 type Params = Record<string, string | undefined>
 
-function firstBrand(): string {
-  const r = metricsDb().prepare(
+async function firstBrand(): Promise<string> {
+  const r = await metricsDb().prepare(
     'SELECT DISTINCT brand_name FROM region_metrics ORDER BY brand_name LIMIT 1'
   ).get() as { brand_name: string }
   return r.brand_name
 }
 
-function latestYm(): string {
-  const r = metricsDb().prepare('SELECT MAX(year_month) AS ym FROM region_metrics').get() as { ym: string }
+async function latestYm(): Promise<string> {
+  const r = await metricsDb().prepare('SELECT MAX(year_month) AS ym FROM region_metrics').get() as { ym: string }
   return r.ym
 }
 
 // ── /api/report/meta ──────────────────────────────────────────────────────────
-export function apiMeta(): Json {
+export async function apiMeta(): Promise<Json> {
   const defs = knowledgeDefs()
   const db = metricsDb()
-  const brands = (db.prepare('SELECT DISTINCT brand_name FROM region_metrics ORDER BY brand_name').all() as { brand_name: string }[])
+  const brands = (await db.prepare('SELECT DISTINCT brand_name FROM region_metrics ORDER BY brand_name').all() as { brand_name: string }[])
     .map(r => r.brand_name)
-  const periods = (db.prepare('SELECT DISTINCT period_type FROM region_metrics').all() as { period_type: string }[])
+  const periods = (await db.prepare('SELECT DISTINCT period_type FROM region_metrics').all() as { period_type: string }[])
     .map(r => r.period_type)
-  const latest = latestYm()
+  const latest = await latestYm()
   const franchises: Record<string, string> = {}
-  for (const r of db.prepare('SELECT DISTINCT brand_name, franchise FROM region_metrics').all() as { brand_name: string; franchise: string }[]) {
+  for (const r of await db.prepare('SELECT DISTINCT brand_name, franchise FROM region_metrics').all() as { brand_name: string; franchise: string }[]) {
     franchises[r.brand_name] = r.franchise
   }
   const signals = Object.entries(signalTemplates(defs)).map(([k, v]) => ({
@@ -49,16 +49,16 @@ export function apiMeta(): Json {
 }
 
 // ── /api/report/signals ───────────────────────────────────────────────────────
-export function apiSignals(params: Params): Json {
+export async function apiSignals(params: Params): Promise<Json> {
   const defs = knowledgeDefs()
   const sigId = params.signal ?? role(defs, 'ui_default')
   const sig = signalTemplates(defs)[sigId]
   if (!sig) return { error: `unknown signal '${sigId}'` }
   const db = metricsDb()
-  const brand = params.brand || firstBrand()
-  const asof = params.asof || latestYm()
+  const brand = params.brand || await firstBrand()
+  const asof = params.asof || await latestYm()
   const period = params.period || sig.period_type
-  const fr = db.prepare('SELECT franchise FROM region_metrics WHERE brand_name=? LIMIT 1').get(brand) as { franchise: string } | undefined
+  const fr = await db.prepare('SELECT franchise FROM region_metrics WHERE brand_name=? LIMIT 1').get(brand) as { franchise: string } | undefined
   const franchise = fr ? fr.franchise : null
   const matCol = sig.materiality_from ?? 'rank_sales_eur'
   const table = sourceTable(sig)
@@ -67,7 +67,7 @@ export function apiSignals(params: Params): Json {
 
   const sql = compileSignalSql(bound, '?', ':entity', true)
   const lags = [...sig.lags].sort((a, b) => b - a)   // oldest -> now
-  const rows = db.prepare(`
+  const rows = await db.prepare(`
     WITH sig AS (${sql.replace(/;\s*$/, '')})
     SELECT s.*, r.${matCol} AS mat
     FROM sig s
@@ -109,12 +109,12 @@ export function apiSignals(params: Params): Json {
 }
 
 // ── /api/report/scatter ───────────────────────────────────────────────────────
-export function apiScatter(params: Params): Json {
+export async function apiScatter(params: Params): Promise<Json> {
   const db = metricsDb()
-  const brand = params.brand || firstBrand()
+  const brand = params.brand || await firstBrand()
   const period = params.period || 'MAT'
-  const asof = params.asof || latestYm()
-  const rows = db.prepare(`
+  const asof = params.asof || await latestYm()
+  const rows = await db.prepare(`
     SELECT region_name, territory_name, mshare_deviation, growth_deviation, rank_sales_eur
     FROM region_metrics
     WHERE brand_name=? AND period_type=? AND year_month=?
@@ -129,11 +129,11 @@ export function apiScatter(params: Params): Json {
 }
 
 // ── /api/report/trails ────────────────────────────────────────────────────────
-export function apiTrails(params: Params): Json {
+export async function apiTrails(params: Params): Promise<Json> {
   const db = metricsDb()
-  const brand = params.brand || firstBrand()
-  const asof = params.asof || latestYm()
-  const rows = db.prepare(`
+  const brand = params.brand || await firstBrand()
+  const asof = params.asof || await latestYm()
+  const rows = await db.prepare(`
     WITH s AS (
       SELECT region_name, territory_name, year_month, rank_sales_eur AS rk,
         mshare_deviation AS x0, LAG(mshare_deviation,1) OVER w AS x1,

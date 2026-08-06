@@ -15,7 +15,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
       const sum = raw.reduce((a, w) => a + w, 0)
       if (sum > 0) weights = raw.map(w => w / sum)
     }
-    return NextResponse.json(composite(sigs, p.get('brand') ?? undefined,
+    return NextResponse.json(await composite(sigs, p.get('brand') ?? undefined,
       p.get('asof') ?? undefined, 0.05, weights))
   } catch (err) {
     return NextResponse.json({ error: `${(err as Error).name}: ${(err as Error).message}` }, { status: 500 })

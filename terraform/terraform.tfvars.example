@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and fill in with your existing AWS account's values.
+# Do NOT commit terraform.tfvars (it's gitignored) — it's environment-specific
+# and db_password should never land in git history.
+
+aws_region          = "eu-central-1"
+vpc_id              = "vpc-XXXXXXXXXXXXXXXXX"
+private_subnet_ids  = ["subnet-AAAAAAAAAAAAAAAAA", "subnet-BBBBBBBBBBBBBBBBB"]
+allowed_cidr_blocks = ["10.0.0.0/8"] # your corporate network / VPN range(s)
+
+# key_name = "my-existing-keypair" # optional, SSM Session Manager works without it
+
+# db_password is intentionally left out — set it via:
+#   export TF_VAR_db_password='...'
+# or a separate untracked file, never in this example.

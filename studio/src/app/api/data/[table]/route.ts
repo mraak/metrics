@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { metricsDb } from '@/lib/db'
+import { metricsDb, tableExists, tableSchema } from '@/lib/db'
 
 // Allowlist to prevent SQL injection
 const ALLOWED_TABLES = [
@@ -12,22 +12,13 @@ const ALLOWED_TABLES = [
   'skus',
 ]
 
-type PragmaColumn = {
-  cid: number
-  name: string
-  type: string
-  notnull: number
-  dflt_value: unknown
-  pk: number
-}
-
 export async function GET(
   request: Request,
   { params }: { params: { table: string } }
 ) {
   const table = params.table
 
-  // Validate against allowed list (also check against sqlite_master at runtime)
+  // Validate against allowed list (also check the live schema at runtime)
   if (!ALLOWED_TABLES.includes(table)) {
     return NextResponse.json({ error: `Table "${table}" is not in the allowed list` }, { status: 400 })
   }
@@ -35,10 +26,7 @@ export async function GET(
   const db = metricsDb()
 
   // Double-check table actually exists in db
-  const exists = db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
-    .get(table)
-  if (!exists) {
+  if (!(await tableExists(table))) {
     return NextResponse.json({ error: `Table "${table}" does not exist` }, { status: 404 })
   }
 
@@ -47,9 +35,7 @@ export async function GET(
 
   // --- Schema mode ---
   if (schemaParam === '1') {
-    const columns = db
-      .prepare(`PRAGMA table_info(${table})`)
-      .all() as PragmaColumn[]
+    const columns = await tableSchema(table)
     return NextResponse.json({ data: { columns } })
   }
 
@@ -81,12 +67,12 @@ export async function GET(
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-    const countRow = db
+    const countRow = await db
       .prepare(`SELECT COUNT(*) as c FROM region_metrics ${where}`)
       .get(...args) as { c: number }
     const total = countRow.c
 
-    const rows = db
+    const rows = await db
       .prepare(`SELECT * FROM region_metrics ${where} LIMIT ? OFFSET ?`)
       .all(...args, limit, offset) as Record<string, unknown>[]
 
@@ -95,12 +81,12 @@ export async function GET(
   }
 
   // --- Other tables: return first N rows unfiltered ---
-  const countRow = db
+  const countRow = await db
     .prepare(`SELECT COUNT(*) as c FROM ${table}`)
     .get() as { c: number }
   const total = countRow.c
 
-  const rows = db
+  const rows = await db
     .prepare(`SELECT * FROM ${table} LIMIT ? OFFSET ?`)
     .all(limit, offset) as Record<string, unknown>[]
 

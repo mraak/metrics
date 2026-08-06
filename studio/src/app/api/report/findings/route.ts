@@ -8,7 +8,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     const p = req.nextUrl.searchParams
     const brand = p.get('brand') ?? 'Oncleris'
     const force = p.get('force') === '1'
-    return NextResponse.json(findFindings(brand, undefined, force))
+    return NextResponse.json(await findFindings(brand, undefined, force))
   } catch (err) {
     return NextResponse.json({ error: `${(err as Error).name}: ${(err as Error).message}` }, { status: 500 })
   }

@@ -50,8 +50,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const segmentValues = body.segmentValues ?? {}
-    const rows = computeSignal(def, segmentValues, body.asof)
-    const segments = getSegmentValues(def)  // available values per segment_by column
+    const rows = await computeSignal(def, segmentValues, body.asof)
+    const segments = await getSegmentValues(def)  // available values per segment_by column
 
     return NextResponse.json({
       data: { rows, asof: body.asof, segments, count: rows.length },

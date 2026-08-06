@@ -19,7 +19,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const mdb = metricsDb()
 
-    const asof = body.asof ?? (mdb.prepare('SELECT MAX(year_month) AS latest FROM region_metrics').get() as { latest: string }).latest
+    const asof = body.asof ?? (await mdb.prepare('SELECT MAX(year_month) AS latest FROM region_metrics').get() as { latest: string }).latest
 
     const def = readFindingDefById(body.finding_def_id)
     if (!def) {
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const segmentValues: Record<string, string | number> = body.brand ? { brand_name: body.brand } : {}
-    const allRows = classifyFindings(def, segmentValues, asof)
+    const allRows = await classifyFindings(def, segmentValues, asof)
 
     // Filter to rows matching the framing's finding_key
     const matchingRows = allRows.filter(r => r.finding_key === body.framing.finding_key)

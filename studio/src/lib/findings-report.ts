@@ -12,7 +12,7 @@
 // read-only) under finding_def_id 'fnd_share_growth' — the same generic
 // catalog the Finding Composer writes to, extended with the report columns
 // (months_red / escalate / improved / mat_rank / …). One catalog, two writers.
-import { metricsDb, toolDb } from './db'
+import { metricsDb, toolDb, toolDbReady, dbDriver } from './db'
 import { knowledgeDefs, role, signalStrength, round, type Json } from './knowledge'
 import { apiSignals } from './report'
 
@@ -78,21 +78,43 @@ interface FindingRow extends Json {
   improved?: boolean
 }
 
-function saveFindings(rows: FindingRow[], brand: string, asof: string, force: boolean): [number, number] {
+async function saveFindings(rows: FindingRow[], brand: string, asof: string, force: boolean): Promise<[number, number]> {
+  await toolDbReady()
   const db = toolDb()
-  const verb = force ? 'INSERT OR REPLACE' : 'INSERT OR IGNORE'
-  const stmt = db.prepare(`
-    ${verb} INTO findings_catalog
-      (finding_def_id, brand_name, region_name, territory_name, year_month,
-       finding_key, severity_band, severity_score,
-       ms_now, ms_sev, growth_now, growth_sev,
-       mat_rank, market_share, months_red, escalate, improved,
-       axes_snapshot)
-    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-  `)
+  // Postgres: one INSERT verb + an ON CONFLICT suffix does either mode.
+  // SQLite: the verb itself picks IGNORE vs REPLACE; no suffix needed (and
+  // REPLACE already refreshes recorded_at via its column default, since it's
+  // implemented as delete+insert).
+  const insertSql = dbDriver() === 'postgres'
+    ? `INSERT INTO findings_catalog
+         (finding_def_id, brand_name, region_name, territory_name, year_month,
+          finding_key, severity_band, severity_score,
+          ms_now, ms_sev, growth_now, growth_sev,
+          mat_rank, market_share, months_red, escalate, improved,
+          axes_snapshot)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+       ${force
+      ? `ON CONFLICT (finding_def_id, brand_name, region_name, year_month) DO UPDATE SET
+           territory_name=EXCLUDED.territory_name, recorded_at=now()::text,
+           finding_key=EXCLUDED.finding_key, severity_band=EXCLUDED.severity_band,
+           severity_score=EXCLUDED.severity_score,
+           ms_now=EXCLUDED.ms_now, ms_sev=EXCLUDED.ms_sev,
+           growth_now=EXCLUDED.growth_now, growth_sev=EXCLUDED.growth_sev,
+           mat_rank=EXCLUDED.mat_rank, market_share=EXCLUDED.market_share,
+           months_red=EXCLUDED.months_red, escalate=EXCLUDED.escalate, improved=EXCLUDED.improved,
+           axes_snapshot=EXCLUDED.axes_snapshot`
+      : `ON CONFLICT (finding_def_id, brand_name, region_name, year_month) DO NOTHING`}`
+    : `INSERT ${force ? 'OR REPLACE' : 'OR IGNORE'} INTO findings_catalog
+         (finding_def_id, brand_name, region_name, territory_name, year_month,
+          finding_key, severity_band, severity_score,
+          ms_now, ms_sev, growth_now, growth_sev,
+          mat_rank, market_share, months_red, escalate, improved,
+          axes_snapshot)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  const stmt = db.prepare(insertSql)
   let inserted = 0
   let skipped = 0
-  const tx = db.transaction(() => {
+  const tx = db.transaction(async () => {
     for (const r of rows) {
       const prov = JSON.stringify({
         ms_series: r.series,
@@ -100,7 +122,7 @@ function saveFindings(rows: FindingRow[], brand: string, asof: string, force: bo
         growth_series: r.growth_series,
         growth_strength: r.growth_strength,
       })
-      const info = stmt.run(
+      const info = await stmt.run(
         SHARE_GROWTH_DEF_ID, brand, r.region, r.territory, asof,
         r.finding, r.severity.band, r.severity.score,
         r.now, r.severity.ms, r.growth_now, r.severity.growth,
@@ -111,12 +133,13 @@ function saveFindings(rows: FindingRow[], brand: string, asof: string, force: bo
       else skipped++
     }
   })
-  tx()
+  await tx()
   return [inserted, skipped]
 }
 
-export function catalogStats(): { total_rows: number; periods: number } {
-  const r = toolDb().prepare(`
+export async function catalogStats(): Promise<{ total_rows: number; periods: number }> {
+  await toolDbReady()
+  const r = await toolDb().prepare(`
     SELECT COUNT(*) AS n, COUNT(DISTINCT brand_name||'|'||year_month) AS periods
     FROM findings_catalog WHERE finding_def_id=?
   `).get(SHARE_GROWTH_DEF_ID) as { n: number; periods: number }
@@ -124,7 +147,8 @@ export function catalogStats(): { total_rows: number; periods: number } {
 }
 
 /** Finding history for one region, oldest-first (key names match schema.html). */
-export function regionHistory(brand: string, region: string): Json[] {
+export async function regionHistory(brand: string, region: string): Promise<Json[]> {
+  await toolDbReady()
   return toolDb().prepare(`
     SELECT year_month, finding_key AS finding, severity_band, severity_score,
            ms_now, growth_now, mat_rank, months_red, escalate, improved,
@@ -132,7 +156,7 @@ export function regionHistory(brand: string, region: string): Json[] {
     FROM findings_catalog
     WHERE finding_def_id=? AND brand_name=? AND region_name=?
     ORDER BY year_month
-  `).all(SHARE_GROWTH_DEF_ID, brand, region) as Json[]
+  `).all(SHARE_GROWTH_DEF_ID, brand, region) as Promise<Json[]>
 }
 
 // ── Month-over-month memory ──────────────────────────────────────────────────
@@ -147,10 +171,10 @@ interface HistEntry {
 }
 
 /** Per region: is it 'red' (losing_both, band >= high) now / -1m / -2m? */
-function history(brand: string, asof: string, defs: Json): Record<string, HistEntry> {
+async function history(brand: string, asof: string, defs: Json): Promise<Record<string, HistEntry>> {
   const mlags = Array.from({ length: 5 }, (_, j) => `LAG(mshare_deviation,${j + 1}) OVER w AS mx${j + 1}`).join(', ')
   const glags = Array.from({ length: 5 }, (_, j) => `LAG(growth_deviation,${j + 1}) OVER w AS gx${j + 1}`).join(', ')
-  const rows = metricsDb().prepare(`
+  const rows = await metricsDb().prepare(`
     WITH s AS (
       SELECT region_name, territory_name, year_month, rank_sales_eur AS rk,
              mshare_deviation AS mx0, ${mlags},
@@ -199,7 +223,7 @@ function history(brand: string, asof: string, defs: Json): Record<string, HistEn
 
 // ── The finding pass ─────────────────────────────────────────────────────────
 
-export function findFindings(brand: string, asofParam?: string, force = false): Json {
+export async function findFindings(brand: string, asofParam?: string, force = false): Promise<Json> {
   const defs = knowledgeDefs()
   const pMs: Record<string, string | undefined> = { brand, signal: role(defs, 'region_position') }
   const pGr: Record<string, string | undefined> = { brand, signal: role(defs, 'region_growth') }
@@ -207,19 +231,19 @@ export function findFindings(brand: string, asofParam?: string, force = false): 
     pMs.asof = asofParam
     pGr.asof = asofParam
   }
-  const ms = apiSignals(pMs) as { asof: string; rows: Json[] }
-  const gr = apiSignals(pGr) as { rows: Json[] }
+  const ms = await apiSignals(pMs) as { asof: string; rows: Json[] }
+  const gr = await apiSignals(pGr) as { rows: Json[] }
   const asof = ms.asof
   const grby: Record<string, Json> = {}
   for (const r of gr.rows) grby[r.region as string] = r
 
   const db = metricsDb()
   const terr: Record<string, string> = {}
-  for (const r of db.prepare('SELECT DISTINCT region_name, territory_name FROM region_metrics WHERE brand_name=?').all(brand) as { region_name: string; territory_name: string }[]) {
+  for (const r of await db.prepare('SELECT DISTINCT region_name, territory_name FROM region_metrics WHERE brand_name=?').all(brand) as { region_name: string; territory_name: string }[]) {
     terr[r.region_name] = r.territory_name
   }
   const mshare: Record<string, number | null> = {}
-  for (const r of db.prepare('SELECT region_name, market_share FROM region_metrics WHERE brand_name=? AND period_type=\'MAT\' AND year_month=?').all(brand, asof) as { region_name: string; market_share: number | null }[]) {
+  for (const r of await db.prepare('SELECT region_name, market_share FROM region_metrics WHERE brand_name=? AND period_type=\'MAT\' AND year_month=?').all(brand, asof) as { region_name: string; market_share: number | null }[]) {
     mshare[r.region_name] = r.market_share
   }
 
@@ -246,7 +270,7 @@ export function findFindings(brand: string, asofParam?: string, force = false): 
     (ORDER.indexOf(a.finding) - ORDER.indexOf(b.finding)) ||
     (b.mat_rank - a.mat_rank))
 
-  const hist = history(brand, asof, defs)
+  const hist = await history(brand, asof, defs)
   const flagged = new Set(rows.map(r => r.region))
   for (const r of rows) {
     const h = hist[r.region]
@@ -264,9 +288,9 @@ export function findFindings(brand: string, asofParam?: string, force = false): 
   const summary = ORDER.map(f => ({ finding: f, label: FINDINGS[f][0], count: counts[f] }))
   const territories = [...new Set(rows.map(x => x.territory))].sort()
 
-  // persist to catalog (INSERT OR IGNORE = first write wins; force=true overwrites)
-  const [inserted, skipped] = saveFindings(rows, brand, asof, force)
-  const stats = catalogStats()
+  // persist to catalog (ON CONFLICT DO NOTHING = first write wins; force=true overwrites)
+  const [inserted, skipped] = await saveFindings(rows, brand, asof, force)
+  const stats = await catalogStats()
 
   return {
     brand, asof, count: rows.length,

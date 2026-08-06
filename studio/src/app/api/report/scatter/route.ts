@@ -7,7 +7,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const params = Object.fromEntries(req.nextUrl.searchParams.entries())
     void params
-    return NextResponse.json(apiScatter(params))
+    return NextResponse.json(await apiScatter(params))
   } catch (err) {
     return NextResponse.json({ error: `${(err as Error).name}: ${(err as Error).message}` }, { status: 500 })
   }
